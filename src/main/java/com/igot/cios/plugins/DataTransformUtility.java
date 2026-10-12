@@ -21,6 +21,7 @@ import com.igot.cios.util.Constants;
 import com.igot.cios.util.elasticsearch.service.EsUtilService;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
+import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.csv.CSVFormat;
@@ -82,54 +83,55 @@ public class DataTransformUtility {
         List<Map<String, String>> dataRows = new ArrayList<>();
         for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
             Row dataRow = sheet.getRow(rowIndex);
-
-            if (dataRow == null) {
-                break; // No more data rows, exit the loop
+            Map<String, String> rowData = dataRow == null
+                    ? Collections.emptyMap()
+                    : buildRowData(headerRow, dataRow, formatter);
+            if (rowData.isEmpty()) {
+                // No more data rows, or all cells are blank in the current row: stop processing
+                break;
             }
-
-            boolean allBlank = true;
-            Map<String, String> rowData = new HashMap<>();
-
-            for (int colIndex = 0; colIndex < headerRow.getLastCellNum(); colIndex++) {
-                Cell headerCell = headerRow.getCell(colIndex);
-                Cell valueCell = dataRow.getCell(colIndex);
-
-                if (headerCell != null && headerCell.getCellType() != CellType.BLANK) {
-                    String excelHeader =
-                            formatter.formatCellValue(headerCell).replaceAll("[\\n*]", "").trim();
-                    String cellValue = "";
-
-                    if (valueCell != null && valueCell.getCellType() != CellType.BLANK) {
-                        if (valueCell.getCellType() == CellType.NUMERIC
-                                && DateUtil.isCellDateFormatted(valueCell)) {
-                            // Handle date format
-                            Date date = valueCell.getDateCellValue();
-                            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
-                            cellValue = dateFormat.format(date);
-                        } else {
-                            cellValue = formatter.formatCellValue(valueCell).replace("\n", ",").trim();
-                        }
-                        allBlank = false;
-                    }
-
-                    rowData.put(excelHeader, cellValue);
-                }
-            }
-            if (allBlank) {
-                break; // If all cells are blank in the current row, stop processing
-            }
-
             dataRows.add(rowData);
         }
         log.info("Number of Data Rows Processed: " + dataRows.size());
         return dataRows;
     }
 
+    private Map<String, String> buildRowData(Row headerRow, Row dataRow, DataFormatter formatter) {
+        boolean allBlank = true;
+        Map<String, String> rowData = new HashMap<>();
+        for (int colIndex = 0; colIndex < headerRow.getLastCellNum(); colIndex++) {
+            Cell headerCell = headerRow.getCell(colIndex);
+            if (headerCell == null || headerCell.getCellType() == CellType.BLANK) {
+                continue;
+            }
+            String excelHeader = formatter.formatCellValue(headerCell).replaceAll("[\\n*]", "").trim();
+            Cell valueCell = dataRow.getCell(colIndex);
+            String cellValue = formatCellValue(valueCell, formatter);
+            if (!cellValue.isEmpty()) {
+                allBlank = false;
+            }
+            rowData.put(excelHeader, cellValue);
+        }
+        return allBlank ? Collections.emptyMap() : rowData;
+    }
+
+    private String formatCellValue(Cell valueCell, DataFormatter formatter) {
+        if (valueCell == null || valueCell.getCellType() == CellType.BLANK) {
+            return "";
+        }
+        if (valueCell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(valueCell)) {
+            Date date = valueCell.getDateCellValue();
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+            return dateFormat.format(date);
+        }
+        return formatter.formatCellValue(valueCell).replace("\n", ",").trim();
+    }
+
     private List<Map<String, String>> processCsvAndSendMessage(InputStream inputStream) throws IOException {
         log.info("DesignationServiceImpl::processCsvAndSendMessage");
         List<Map<String, String>> dataRows = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-             CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withFirstRecordAsHeader())) {
+             CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.builder().setHeader().setSkipHeaderRecord(true).build())) {
             List<String> headers = csvParser.getHeaderNames();
             for (CSVRecord csvRecord : csvParser) {
                 boolean allBlank = true;
@@ -151,7 +153,7 @@ public class DataTransformUtility {
             log.info("Number of Data Rows Processed: " + dataRows.size());
         } catch (Exception e) {
             log.error(e.getMessage());
-            throw new RuntimeException(e.getMessage());
+            throw new IllegalStateException(e.getMessage());
         }
         return dataRows;
     }
@@ -176,7 +178,7 @@ public class DataTransformUtility {
             return validateFileAndProcessRows(incomingFile);
         } catch (Exception e) {
             log.error("Error occurred during file processing: {}", e.getMessage());
-            throw new RuntimeException(e.getMessage());
+            throw new IllegalStateException(e.getMessage());
         }
     }
 
@@ -184,7 +186,7 @@ public class DataTransformUtility {
         log.info("CiosContentServiceImpl::validateFileAndProcessRows");
         String fileName = file.getOriginalFilename();
         if (fileName == null) {
-            throw new RuntimeException("File name is null");
+            throw new IllegalStateException("File name is null");
         }
         try (InputStream inputStream = file.getInputStream()) {
             if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
@@ -194,11 +196,11 @@ public class DataTransformUtility {
             } else if (fileName.endsWith(".csv")) {
                 return processCsvAndSendMessage(inputStream);
             } else {
-                throw new RuntimeException("Unsupported file type: " + fileName);
+                throw new IllegalStateException("Unsupported file type: " + fileName);
             }
         } catch (IOException e) {
             log.error("Error while processing Excel file: {}", e.getMessage());
-            throw new RuntimeException(e.getMessage());
+            throw new UncheckedIOException(e.getMessage(), e);
         }
     }
 
@@ -224,10 +226,10 @@ public class DataTransformUtility {
         Map<String, Object> readData = (Map<String, Object>) fetchResultUsingGet(getApiUrl, headers);
 
         if (readData == null) {
-            throw new RuntimeException("Failed to get data from API: Response is null");
+            throw new IllegalStateException("Failed to get data from API: Response is null");
         }
-        ObjectMapper objectMapper = new ObjectMapper();
-        return objectMapper.convertValue(readData.get("result"), JsonNode.class);
+        ObjectMapper localObjectMapper = new ObjectMapper();
+        return localObjectMapper.convertValue(readData.get("result"), JsonNode.class);
     }
 
     public Object fetchResultUsingGet(String uri, Map<String, String> headersValues) {
@@ -244,7 +246,7 @@ public class DataTransformUtility {
             }
             HttpHeaders headers = new HttpHeaders();
             if (!CollectionUtils.isEmpty(headersValues)) {
-                headersValues.forEach((k, v) -> headers.set(k, v));
+                headersValues.forEach(headers::set);
             }
             HttpEntity<Object> entity = new HttpEntity<>(headers);
             response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class).getBody();
@@ -254,6 +256,7 @@ public class DataTransformUtility {
                         new TypeReference<HashMap<String, Object>>() {
                         });
             } catch (Exception e1) {
+                // best-effort parse of the error body; fall back to the already-logged raw response below
             }
             log.error("Error received: " + e.getResponseBodyAsString(), e);
         } catch (Exception e) {
@@ -261,6 +264,7 @@ public class DataTransformUtility {
             try {
                 log.warn("Error Response: " + mapper.writeValueAsString(response));
             } catch (Exception e1) {
+                // response could not be serialized for logging; nothing more to do
             }
         }
         return response;
@@ -269,7 +273,7 @@ public class DataTransformUtility {
     public void validatePayload(String fileName, JsonNode payload) {
         try {
             log.debug("PayloadValidation :: validatePayload");
-            JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
+            JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V4);
             InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(fileName);
             JsonSchema schema = schemaFactory.getSchema(schemaStream);
             if (payload.isArray()) {
@@ -297,13 +301,11 @@ public class DataTransformUtility {
         }
     }
 
-    public String createFileInfo(String partnerId, String fileId, String fileName, Timestamp initiatedOn, Timestamp completedOn, String status, String GCPFileName, String contentUploadedGCPFileName) {
+    public String createFileInfo(String partnerId, String fileId, String fileName, Timestamp initiatedOn, Timestamp completedOn, String status, String gcpFileName, String contentUploadedGCPFileName) {
         log.info("CiosContentService:: createFileInfo: creating file information");
         FileInfoEntity fileInfoEntity = new FileInfoEntity();
         if (fileId == null) {
-            fileInfoEntity = new FileInfoEntity();
             fileId = UUID.randomUUID().toString();
-            fileInfoEntity.setFileId(fileId);
         }
         fileInfoEntity.setFileId(fileId);
         fileInfoEntity.setFileName(fileName);
@@ -311,7 +313,7 @@ public class DataTransformUtility {
         fileInfoEntity.setCompletedOn(completedOn);
         fileInfoEntity.setStatus(status);
         fileInfoEntity.setPartnerId(partnerId);
-        fileInfoEntity.setGCPFileName(GCPFileName);
+        fileInfoEntity.setGcpFileName(gcpFileName);
         fileInfoEntity.setContentUploadedGCPFileName(contentUploadedGCPFileName);
         fileInfoRepository.save(fileInfoEntity);
         log.info("created successfully fileInfo {}", fileId);
@@ -321,7 +323,7 @@ public class DataTransformUtility {
     public List<String> validateRowData(String fileName,JsonNode rowNode) {
         List<String> invalidErrList = new ArrayList<>();
         try {
-            JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
+            JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V4);
             InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(fileName);
             JsonSchema schema = schemaFactory.getSchema(schemaStream);
             if (rowNode.isArray()) {
@@ -332,7 +334,7 @@ public class DataTransformUtility {
                 validateRowDataObject(schema, rowNode, invalidErrList);
             }
         } catch (IllegalArgumentException e) {
-            throw new RuntimeException(e);
+            throw new IllegalStateException(e);
         }
         return invalidErrList;
     }
@@ -384,7 +386,7 @@ public class DataTransformUtility {
         List<String> searchTags = new ArrayList<>();
         searchTags.add(transformData.path(Constants.CONTENT).get(Constants.NAME).textValue().toLowerCase());
         ArrayNode searchTagsArray = objectMapper.valueToTree(searchTags);
-        ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.CONTENT_SEARCH_TAGS, searchTagsArray);
+        ((ObjectNode) transformData.path(Constants.CONTENT)).set(Constants.CONTENT_SEARCH_TAGS, searchTagsArray);
         return transformData;
     }
 
@@ -481,10 +483,9 @@ public class DataTransformUtility {
                     Object.class
             );
             if (response.getStatusCode().is2xxSuccessful()) {
-                JsonNode jsonNode = objectMapper.valueToTree(response.getBody());
-                return jsonNode;
+                return objectMapper.valueToTree(response.getBody());
             } else {
-                throw new CiosContentException(Constants.ERROR, "Failed to retrieve externalId. Status code: " + response.getStatusCodeValue());
+                throw new CiosContentException(Constants.ERROR, "Failed to retrieve externalId. Status code: " + response.getStatusCode().value());
             }
         } catch (Exception e) {
             throw new CiosContentException(Constants.ERROR, e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
@@ -587,7 +588,7 @@ public class DataTransformUtility {
             return result;
         } catch (Exception e) {
             log.error("Error while validating payload for file: {}", fileName, e);
-            throw new RuntimeException(e);
+            throw new IllegalStateException(e);
         }
     }
 
@@ -618,7 +619,9 @@ public class DataTransformUtility {
         File logFile = new File(csvFilePath);
         if (!logFile.exists()) {
             logFile.getParentFile().mkdirs();
-            logFile.createNewFile();
+            if (!logFile.createNewFile()) {
+                log.warn("Failed to pre-create log file at: {}", csvFilePath);
+            }
         }
         try (FileWriter writer = new FileWriter(csvFilePath)) {
             if (!logs.isEmpty()) {
@@ -642,7 +645,7 @@ public class DataTransformUtility {
                 }
             }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new UncheckedIOException(e);
         }
         return logFile;
     }

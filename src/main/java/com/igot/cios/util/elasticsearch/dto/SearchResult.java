@@ -13,7 +13,7 @@ import java.util.Map;
 @AllArgsConstructor
 @NoArgsConstructor
 public class SearchResult implements Serializable {
-    private JsonNode data;
+    private transient JsonNode data;
     private Map<String, List<FacetDTO>> facets;
     private long totalCount;
 }

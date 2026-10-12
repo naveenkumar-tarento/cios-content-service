@@ -12,12 +12,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class CiosRestExceptionHandling {
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity handleException(Exception ex) {
+    public ResponseEntity<CiosErrorResponse> handleException(Exception ex) {
         log.debug("RestExceptionHandler::handleException::" + ex);
         HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
-        CiosErrorResponse errorResponse = null;
-        if (ex instanceof CiosContentException) {
-            CiosContentException esUtilException = (CiosContentException) ex;
+        CiosErrorResponse errorResponse;
+        if (ex instanceof CiosContentException esUtilException) {
             status = HttpStatus.BAD_REQUEST;
             errorResponse = CiosErrorResponse.builder()
                     .code(esUtilException.getCode())

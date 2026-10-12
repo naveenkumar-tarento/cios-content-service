@@ -1,42 +1,41 @@
 package com.igot.cios.exception;
 
 import lombok.Getter;
-import lombok.Setter;
 import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
 @Getter
-@Setter
-@Component
 public class CiosContentException extends RuntimeException {
-    private String code;
-    private String message;
-    private HttpStatus httpStatusCode;
-    private Map<String, String> errors;
+    private final String code;
+    private final String message;
+    private final HttpStatus httpStatusCode;
+    private final Map<String, String> errors;
 
     public CiosContentException() {
+        this(null, null, null, null);
     }
 
     public CiosContentException(String code, String message) {
-        this.code = code;
-        this.message = message;
+        this(code, message, null, null);
     }
 
     public CiosContentException(String code, String message, HttpStatus httpStatusCode) {
-        this.code = code;
-        this.message = message;
-        this.httpStatusCode = httpStatusCode;
+        this(code, message, httpStatusCode, null);
     }
 
     public CiosContentException(String message, HttpStatus httpStatusCode) {
-        this.message = message;
-        this.httpStatusCode = httpStatusCode;
+        this(null, message, httpStatusCode, null);
     }
 
     public CiosContentException(Map<String, String> errors) {
-        this.message = errors.toString();
+        this(null, errors.toString(), null, errors);
+    }
+
+    private CiosContentException(String code, String message, HttpStatus httpStatusCode, Map<String, String> errors) {
+        this.code = code;
+        this.message = message;
+        this.httpStatusCode = httpStatusCode;
         this.errors = errors;
     }
 

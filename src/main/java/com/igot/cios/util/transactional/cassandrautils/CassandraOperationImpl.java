@@ -11,11 +11,11 @@ import com.datastax.oss.driver.api.querybuilder.update.UpdateWithAssignments;
 import com.igot.cios.util.ApiResponse;
 import com.igot.cios.util.Constants;
 
+import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -30,12 +30,12 @@ import java.util.stream.Collectors;
  * @author Ruksana
  */
 @Component
+@RequiredArgsConstructor
 public class CassandraOperationImpl implements CassandraOperation {
 
     private Logger logger = LoggerFactory.getLogger(getClass().getName());
 
-    @Autowired
-    CassandraConnectionManager connectionManager;
+    private final CassandraConnectionManager connectionManager;
 
     private Select processQuery(String keyspaceName, String tableName, Map<String, Object> propertyMap,
                                 List<String> fields) {

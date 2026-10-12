@@ -1,9 +1,7 @@
 package com.igot.cios.util.config;
 
-import com.igot.cios.util.elasticsearch.dto.SearchResult;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -27,7 +25,7 @@ public class RedisConfig {
     @Value("${spring.redis.port}")
     private int redisPort;
 
-    private final long redisTimeout = 60000;
+    private static final long REDIS_TIMEOUT = 60000;
 
     @Bean
     public RedisConnectionFactory redisConnectionFactory() {
@@ -37,7 +35,7 @@ public class RedisConfig {
         configuration.setDatabase(0);
 
         LettuceClientConfiguration clientConfig = LettucePoolingClientConfiguration.builder()
-                .commandTimeout(Duration.ofMillis(redisTimeout))
+                .commandTimeout(Duration.ofMillis(REDIS_TIMEOUT))
                 .poolConfig(buildPoolConfig())
                 .build();
 

@@ -1,6 +1,5 @@
 package com.igot.cios.scheduler;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -13,8 +12,8 @@ import com.igot.cios.util.CbServerProperties;
 import com.igot.cios.util.Constants;
 import com.igot.cios.util.PayloadValidation;
 import com.igot.cios.util.transactional.cassandrautils.CassandraOperation;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -32,21 +31,15 @@ import java.util.Map;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class CdacSchedulerService {
-    @Autowired
-    private ObjectMapper objectMapper;
-    @Autowired
-    KafkaProducer kafkaProducer;
-    @Autowired
-    PayloadValidation payloadValidation;
-    @Autowired
-    RestTemplate restTemplate;
-    @Autowired
-    private CbServerProperties cbServerProperties;
-    @Autowired
-    private CassandraOperation cassandraOperation;
-    @Autowired
-    private DataTransformUtility dataTransformUtility;
+    private final ObjectMapper objectMapper;
+    private final KafkaProducer kafkaProducer;
+    private final PayloadValidation payloadValidation;
+    private final RestTemplate restTemplate;
+    private final CbServerProperties cbServerProperties;
+    private final CassandraOperation cassandraOperation;
+    private final DataTransformUtility dataTransformUtility;
 
     private void callEnrollmentAPI(String partnerCode, String partnerId, JsonNode transformData) {
         try {
@@ -96,7 +89,7 @@ public class CdacSchedulerService {
                     .withZone(ZoneId.of("UTC"));
             return outputFormatter.format(utcZonedDateTime);  // Format output
         } catch (RuntimeException e) {
-            throw new RuntimeException("Invalid date format: " + completedon, e);
+            throw new IllegalStateException("Invalid date format: " + completedon, e);
         }
     }
 
@@ -129,11 +122,11 @@ public class CdacSchedulerService {
     }
 
     private Map<String, String> formUrlMapForEnrollment() {
-        DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime fromDateTime = now.minusDays(cbServerProperties.getCornellDateRange());
-        String fromdate = fromDateTime.format(FORMATTER);
-        String todate = now.format(FORMATTER);
+        String fromdate = fromDateTime.format(formatter);
+        String todate = now.format(formatter);
         Map<String, String> urlMap = new HashMap<>();
         urlMap.put(Constants.FROM_DATE, fromdate);
         urlMap.put(Constants.TO_DATE, todate);
@@ -157,15 +150,12 @@ public class CdacSchedulerService {
             if (!jsonData.isMissingNode()) {
                 JsonNode contentPartnerResponse = dataTransformUtility.fetchPartnerInfoUsingApi(partnerCode);
                 String partnerId = contentPartnerResponse.get("id").asText();
-                jsonData.forEach(
-                        eachContentData -> {
-                            callEnrollmentAPI(partnerCode, partnerId, eachContentData);
-                        });
+                jsonData.forEach(eachContentData -> callEnrollmentAPI(partnerCode, partnerId, eachContentData));
             } else {
                 log.error("Failed to retrieve response data: for partner code {}", partnerCode);
             }
         } else {
-            throw new RuntimeException("Failed to retrieve externalId. Status code: " + response.getStatusCodeValue());
+            throw new IllegalStateException("Failed to retrieve externalId. Status code: " + response.getStatusCode().value());
         }
     }
 }

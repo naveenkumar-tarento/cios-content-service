@@ -1,7 +1,5 @@
 package com.igot.cios.scheduler;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -15,37 +13,29 @@ import com.igot.cios.util.CbServerProperties;
 import com.igot.cios.util.Constants;
 import com.igot.cios.util.PayloadValidation;
 import com.igot.cios.util.transactional.cassandrautils.CassandraOperation;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class CourseraSchedulerService {
-    @Autowired
-    private ObjectMapper objectMapper;
-    @Autowired
-    KafkaProducer kafkaProducer;
-    @Autowired
-    PayloadValidation payloadValidation;
-    @Autowired
-    RestTemplate restTemplate;
-    @Autowired
-    private CbServerProperties cbServerProperties;
-    @Autowired
-    private CassandraOperation cassandraOperation;
-    @Autowired
-    private DataTransformUtility dataTransformUtility;
+    private final ObjectMapper objectMapper;
+    private final KafkaProducer kafkaProducer;
+    private final PayloadValidation payloadValidation;
+    private final RestTemplate restTemplate;
+    private final CbServerProperties cbServerProperties;
+    private final CassandraOperation cassandraOperation;
+    private final DataTransformUtility dataTransformUtility;
 
     public SBApiResponse loadCourseraEnrollment() {
         log.info("Coursera Scheduler Service::loadCourseraEnrollment()");
@@ -71,9 +61,7 @@ public class CourseraSchedulerService {
             }
             JsonNode contentPartnerInfo = dataTransformUtility.fetchPartnerInfoUsingApi(cbServerProperties.courseraPartnerCode);
             String partnerId = contentPartnerInfo.get("id").asText();
-            allEnrollmentData.forEach(eachContentData -> {
-                callEnrollmentAPI(cbServerProperties.courseraPartnerCode, partnerId, eachContentData);
-            });
+            allEnrollmentData.forEach(eachContentData -> callEnrollmentAPI(cbServerProperties.courseraPartnerCode, partnerId, eachContentData));
             apiResponse.setResponseCode(HttpStatus.OK);
             return apiResponse;
         } catch (Exception e) {
@@ -123,7 +111,7 @@ public class CourseraSchedulerService {
                 log.error("Failed to retrieve response data: for partner code {}", partnerCode);
             }
         } else {
-            throw new RuntimeException("Failed to retrieve externalId. Status code: " + response.getStatusCodeValue());
+            throw new IllegalStateException("Failed to retrieve externalId. Status code: " + response.getStatusCode().value());
         }
         return null;
     }

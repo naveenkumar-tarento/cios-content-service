@@ -22,11 +22,9 @@ import org.springframework.stereotype.Component;
 
 import java.net.InetSocketAddress;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 
 /**
@@ -38,6 +36,7 @@ import java.util.stream.Collectors;
 @Component
 @Slf4j
 public class CassandraConnectionManagerImpl implements CassandraConnectionManager {
+    private static final String LOCAL_DATACENTER = "datacenter1";
     private final Logger logger = LogManager.getLogger(CassandraConnectionManagerImpl.class);
     private static final Map<String, CqlSession> cassandraSessionMap = new ConcurrentHashMap<>(2);
     private static CqlSession session;
@@ -79,29 +78,6 @@ public class CassandraConnectionManagerImpl implements CassandraConnectionManage
     }
 
     /**
-     * Creates a Cluster object with specified hosts and pooling options
-     *
-     * @param hosts          - Cassandra host configuration
-     * @param poolingOptions -   // Configure connection pooling options
-     * @return - Cluster object with specified hosts and pooling options
-     */
-/*    private static Cluster createCluster(String[] hosts, PoolingOptions poolingOptions) {
-        Cluster.Builder builder = Cluster.builder()
-                .addContactPoints(hosts)
-                .withProtocolVersion(ProtocolVersion.V3)
-                .withRetryPolicy(DefaultRetryPolicy.INSTANCE)
-                .withTimestampGenerator(new AtomicMonotonicTimestampGenerator())
-                .withPoolingOptions(poolingOptions);
-
-        ConsistencyLevel consistencyLevel = getConsistencyLevel();
-        if (consistencyLevel != null) {
-            builder.withQueryOptions(new QueryOptions().setConsistencyLevel(consistencyLevel));
-        }
-
-        return builder.build();
-    }*/
-
-    /**
      * Retrieves consistency level from properties
      *
      * @return -consistency level from properties
@@ -117,16 +93,6 @@ public class CassandraConnectionManagerImpl implements CassandraConnectionManage
                     .info("Exception occurred with error message = {}", exception.getMessage());
         }
         return null;
-    }
-
-    /**
-     * Initializes sessions for predefined keyspaces
-     */
-    private void initializeSessions() {
-        List<String> keyspacesList = Collections.singletonList(Constants.KEYSPACE_SUNBIRD);
-        for (String keyspace : keyspacesList) {
-            getSession(keyspace);
-        }
     }
 
     /**
@@ -159,16 +125,6 @@ public class CassandraConnectionManagerImpl implements CassandraConnectionManage
         }
     }
 
-    private void logClusterDetails(Metadata metadata) {
-        String clusterName = String.valueOf(metadata.getClusterName());
-        logger.info("Connected to cluster: {}", clusterName != null ? clusterName : "Unknown");
-        metadata.getNodes().values().forEach(node ->
-                logger.info("Datacenter: {}; Host: {}; Rack: {}",
-                        node.getDatacenter(),
-                        node.getEndPoint().resolve(),
-                        node.getRack() != null ? node.getRack() : "Unknown"));
-    }
-
     private CqlSession createCassandraConnectionWithKeySpaces(String keySpaceName) {
         try {
             // Load the properties required for connection
@@ -183,15 +139,15 @@ public class CassandraConnectionManagerImpl implements CassandraConnectionManage
             List<String> hosts = Arrays.asList(cassandraHost.split(","));
             List<InetSocketAddress> contactPoints = hosts.stream()
                     .map(host -> new InetSocketAddress(host.trim(), 9042))
-                    .collect(Collectors.toList());
+                    .toList();
 
             List<String> contactPointsString = hosts.stream()
                     .map(host -> host.trim() + ":9042")
-                    .collect(Collectors.toList());
+                    .toList();
             DriverConfigLoader loader = DriverConfigLoader.programmaticBuilder()
                     .withStringList(DefaultDriverOption.CONTACT_POINTS, contactPointsString)
                     .withString(DefaultDriverOption.REQUEST_CONSISTENCY, getConsistencyLevel().name())
-                    .withString(DefaultDriverOption.LOAD_BALANCING_LOCAL_DATACENTER, "datacenter1")
+                    .withString(DefaultDriverOption.LOAD_BALANCING_LOCAL_DATACENTER, LOCAL_DATACENTER)
                     .withInt(DefaultDriverOption.CONNECTION_POOL_LOCAL_SIZE,
                             Integer.parseInt(cache.getProperty(Constants.CORE_CONNECTIONS_PER_HOST_FOR_LOCAL)))
                     .withInt(DefaultDriverOption.CONNECTION_POOL_REMOTE_SIZE,
@@ -209,25 +165,25 @@ public class CassandraConnectionManagerImpl implements CassandraConnectionManage
             if (StringUtils.isNotBlank(keySpaceName)) {
                 sessionWithKeyspaces = CqlSession.builder()
                         .addContactPoints(contactPoints)
-                        .withLocalDatacenter("datacenter1")
+                        .withLocalDatacenter(LOCAL_DATACENTER)
                         .withKeyspace(keySpaceName)
                         .withConfigLoader(loader)
                         .build();
             } else {
                 sessionWithKeyspaces = CqlSession.builder()
                         .addContactPoints(contactPoints)
-                        .withLocalDatacenter("datacenter1")
+                        .withLocalDatacenter(LOCAL_DATACENTER)
                         .withConfigLoader(loader)
                         .build();
             }
-            logger.info("Connected to the keyspaces: " + keySpaceName);
+            logger.info("Connected to the keyspaces: {}", keySpaceName);
             // Get metadata and log cluster information
             final Metadata metadata = sessionWithKeyspaces.getMetadata();
-            logger.info(String.format("Connected to cluster: %s", metadata.getClusterName()));
+            logger.info("Connected to cluster: {}", metadata.getClusterName());
 
             // Log nodes in the cluster
             for (Node host : metadata.getNodes().values()) {
-                logger.info(String.format("Datacenter: %s; Host: %s; Rack: %s", host.getDatacenter(), host.getEndPoint(), host.getRack()));
+                logger.info("Datacenter: {}; Host: {}; Rack: {}", host.getDatacenter(), host.getEndPoint(), host.getRack());
             }
             return sessionWithKeyspaces;
         } catch (Exception e) {

@@ -22,7 +22,7 @@ public class SBApiResponse {
     private String ts;
     private ApiRespParam params;
     private HttpStatus responseCode;
-    private transient Map<String, Object> result = new HashMap<>();
+    private Map<String, Object> result = new HashMap<>();
 
     public Object get(String key) {
         return result.get(key);

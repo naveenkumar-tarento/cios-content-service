@@ -30,12 +30,6 @@ public class SunbirdConfig extends CassandraConfig {
 	@Value("${spring.cassandra.password}")
 	private String sunbirdPassword;
 
-	@Value("${cassandra.config.host}")
-	private String contactPoints;
-
-	@Value("${spring.cassandra.port}")
-	private String port;
-
 	@NotNull
 	@Bean(name = "sunbirdTemplate")
 	public CassandraAdminTemplate cassandraTemplate(@Autowired CqlSession cqlSession) {

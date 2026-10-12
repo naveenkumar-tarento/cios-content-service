@@ -30,7 +30,7 @@ public class FileInfoEntity {
 
     private String partnerId;
 
-    private String GCPFileName;
+    private String gcpFileName;
 
     private  String contentUploadedGCPFileName;
 }

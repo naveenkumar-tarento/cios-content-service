@@ -80,6 +80,7 @@ public class Constants {
     public static final Boolean ACTIVE_STATUS = false;
     public static final String CONTENT_SEARCH_TAGS = "contentSearchTags";
     public static final String CONTENT = "content";
+    public static final String EXTERNAL_ID_PREFIX = "External ID: ";
     public static final String FILE_ID = "fileId";
     public static final String PARTNER_CODE = "partnerCode";
     public static final String NAME = "name";

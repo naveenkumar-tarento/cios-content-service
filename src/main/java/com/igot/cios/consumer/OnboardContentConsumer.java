@@ -6,13 +6,12 @@ import com.igot.cios.dto.SBApiResponse;
 import com.igot.cios.entity.FileInfoEntity;
 import com.igot.cios.plugins.DataTransformUtility;
 import com.igot.cios.repository.FileInfoRepository;
-import com.igot.cios.service.impl.CiosContentServiceImpl;
 import com.igot.cios.storage.StoreFileToGCP;
 import com.igot.cios.util.CbServerProperties;
 import com.igot.cios.util.Constants;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -34,22 +33,18 @@ import java.util.concurrent.Executors;
 
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class OnboardContentConsumer {
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper;
 
-    @Autowired
-    private FileInfoRepository fileInfoRepository;
+    private final FileInfoRepository fileInfoRepository;
 
-    @Autowired
-    private StoreFileToGCP gcpBucket;
+    private final StoreFileToGCP gcpBucket;
 
-    @Autowired
-    private CbServerProperties cbServerProperties;
+    private final CbServerProperties cbServerProperties;
 
-    @Autowired
-    DataTransformUtility dataTransformUtility;
+    private final DataTransformUtility dataTransformUtility;
 
     @KafkaListener(topics = "${kafka.topic.content.onboarding}", groupId = "${content.onboarding.consumer.group}")
     public void consumeMessage(String message) {

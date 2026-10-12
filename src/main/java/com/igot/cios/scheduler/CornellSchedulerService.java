@@ -16,12 +16,10 @@ import com.igot.cios.util.PayloadValidation;
 import com.igot.cios.util.transactional.cassandrautils.CassandraOperation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.client.RestTemplate;
-import com.fasterxml.jackson.core.type.TypeReference;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -106,9 +104,7 @@ public class CornellSchedulerService{
             }
             JsonNode contentPartnerInfo = dataTransformUtility.fetchPartnerInfoUsingApi(cbServerProperties.cornellPartnerCode);
             String partnerId = contentPartnerInfo.get(Constants.ID).asText();
-            allEnrollmentData.forEach(eachContentData -> {
-                callEnrollmentAPI(cbServerProperties.cornellPartnerCode, partnerId, eachContentData);
-            });
+            allEnrollmentData.forEach(eachContentData -> callEnrollmentAPI(cbServerProperties.cornellPartnerCode, partnerId, eachContentData));
             apiResponse.setResponseCode(HttpStatus.OK);
             return apiResponse;
         } catch (Exception e) {
@@ -121,10 +117,10 @@ public class CornellSchedulerService{
     }
 
     private Map<String, String> formUrlMapForEnrollment(int start, int limit) {
-        DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
         LocalDate today = LocalDate.now();
         LocalDate startDate = today.minusDays(cbServerProperties.getCornellDateRange()); // Adjust the range as needed
-        String completionRange = startDate.format(FORMATTER) + ":" + today.format(FORMATTER);
+        String completionRange = startDate.format(formatter) + ":" + today.format(formatter);
         log.info("Completion Range {}", completionRange);
         Map<String, String> urlMap = new HashMap<>();
         urlMap.put("offset", String.valueOf(start));

@@ -9,8 +9,8 @@ import com.igot.cios.exception.CiosContentException;
 import com.igot.cios.service.CiosContentService;
 import com.igot.cios.util.elasticsearch.dto.SearchCriteria;
 import com.igot.cios.util.elasticsearch.dto.SearchResult;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,9 +24,9 @@ import java.util.List;
 @RestController
 @RequestMapping("/ciosIntegration")
 @Slf4j
+@RequiredArgsConstructor
 public class CiosContentController {
-    @Autowired
-    CiosContentService ciosContentService;
+    private final CiosContentService ciosContentService;
 
     @PostMapping(value = "/v1/loadContentFromExcel/{partnercode}/{partnerId}", consumes = "multipart/form-data")
     public ResponseEntity<SBApiResponse> loadContentFromExcel(
@@ -39,7 +39,7 @@ public class CiosContentController {
     }
 
     @PostMapping(value = "/v1/readAllContentFromDb")
-    public ResponseEntity<?> fetchContentFromDb(@RequestBody RequestDto dto) {
+    public ResponseEntity<Object> fetchContentFromDb(@RequestBody RequestDto dto) {
         try {
             return ResponseEntity.ok(ciosContentService.fetchAllContentFromSecondaryDb(dto));
         } catch (Exception e) {
@@ -69,7 +69,7 @@ public class CiosContentController {
     }
 
     @PostMapping("/v1/deleteContent")
-    public ResponseEntity<?> deleteNotPublishContent(@RequestBody DeleteContentRequestDto deleteContentRequestDto) {
+    public ResponseEntity<Object> deleteNotPublishContent(@RequestBody DeleteContentRequestDto deleteContentRequestDto) {
         try {
             return ciosContentService.deleteNotPublishContent(deleteContentRequestDto);
         } catch (CiosContentException e) {

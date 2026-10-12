@@ -10,7 +10,7 @@ import static org.mockito.Mockito.mockStatic;
 
 
 @ExtendWith(MockitoExtension.class)
-public class CiosContentServiceApplicationTest {
+class CiosContentServiceApplicationTest {
 
     @Test
     void testMainMethodCallsSpringApplicationRun() {

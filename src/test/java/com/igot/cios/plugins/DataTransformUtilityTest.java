@@ -3,6 +3,7 @@ package com.igot.cios.plugins;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.igot.cios.dto.LogStatus;
 import com.igot.cios.entity.CornellContentEntity;
 import com.igot.cios.entity.FileInfoEntity;
 import com.igot.cios.exception.CiosContentException;
@@ -50,6 +51,9 @@ class DataTransformUtilityTest {
 
     @Mock
     private CornellContentRepository cornellContentRepository;
+
+    @Mock
+    private LogStatus logStatus;
 
 
     @BeforeEach

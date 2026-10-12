@@ -20,8 +20,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
-import java.util.Vector;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -63,18 +61,16 @@ public class HarvardSchedulerService {
             for (ChannelSftp.LsEntry entry : fileList) {
                 String fileName = entry.getFilename();
 
-                if (isValidFile(fileName)) {
-                    totalFiles++;
-                    log.info("Processing file: {}", fileName);
-                    try {
-                        processFile(channelSftp, fileName);
-                        processedFiles++;
-                    } catch (Exception e) {
-                        failedFiles++;
-                        log.error("Failed to process file: {}", fileName, e);
-                    }
-                } else {
+                if (!isValidFile(fileName)) {
                     log.debug("Skipping non-supported file: {}", fileName);
+                    continue;
+                }
+                totalFiles++;
+                log.info("Processing file: {}", fileName);
+                if (processFileSafely(channelSftp, fileName)) {
+                    processedFiles++;
+                } else {
+                    failedFiles++;
                 }
             }
             log.info("Harvard file processing completed. Total: {}, Processed: {}, Failed: {}", totalFiles, processedFiles, failedFiles);
@@ -124,8 +120,7 @@ public class HarvardSchedulerService {
 
     private List<ChannelSftp.LsEntry> listFiles(ChannelSftp channelSftp) throws SftpException {
         log.info("Listing files in directory: {}", cbServerProperties.getHarvardSftpRemoteDirectory());
-        Vector<ChannelSftp.LsEntry> vector = channelSftp.ls(cbServerProperties.getHarvardSftpRemoteDirectory());
-        return new ArrayList<>(vector);
+        return new ArrayList<>(channelSftp.ls(cbServerProperties.getHarvardSftpRemoteDirectory()));
     }
 
     private boolean isValidFile(String fileName) {
@@ -141,6 +136,16 @@ public class HarvardSchedulerService {
 
         return allowedExtensions.stream()
                 .anyMatch(lowerCaseFileName::endsWith);
+    }
+
+    private boolean processFileSafely(ChannelSftp channelSftp, String fileName) {
+        try {
+            processFile(channelSftp, fileName);
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to process file: {}", fileName, e);
+            return false;
+        }
     }
 
     private void processFile(ChannelSftp channelSftp, String fileName) {

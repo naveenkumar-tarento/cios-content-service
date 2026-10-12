@@ -30,7 +30,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-public class CiosContentServiceImplTest {
+class CiosContentServiceImplTest {
 
     @Mock
     private CornellContentRepository repository;
@@ -60,7 +60,6 @@ public class CiosContentServiceImplTest {
     void setUp() {
         realObjectMapper = new ObjectMapper();
         partnerCode = "TEST_PARTNER";
-       // partnerId = "partner-123";
         externalIds = Arrays.asList("ext-001", "ext-002");
 
         deleteContentRequestDto = new DeleteContentRequestDto();
@@ -74,7 +73,7 @@ public class CiosContentServiceImplTest {
     // -------------------- DELETE CONTENT TEST CASES --------------------
 
     @Test
-    void deleteNotPublishContent_success_multipleValidEntities() throws Exception {
+    void deleteNotPublishContent_success_multipleValidEntities() {
         // Arrange
         List<CornellContentEntity> entities = new ArrayList<>();
         CornellContentEntity entity1 = createMockEntity("ext-001", false, Constants.NOT_INITIATED);
@@ -105,7 +104,7 @@ public class CiosContentServiceImplTest {
     }
 
     @Test
-    void deleteNotPublishContent_error_entityIsActive() throws Exception {
+    void deleteNotPublishContent_error_entityIsActive() {
         // Arrange
         List<CornellContentEntity> entities = new ArrayList<>();
         CornellContentEntity entity1 = createMockEntity("ext-001", true, Constants.NOT_INITIATED);
@@ -134,7 +133,7 @@ public class CiosContentServiceImplTest {
     }
 
     @Test
-    void deleteNotPublishContent_error_statusNotDraftOrNotInitiated() throws Exception {
+    void deleteNotPublishContent_error_statusNotDraftOrNotInitiated() {
         // Arrange
         List<CornellContentEntity> entities = new ArrayList<>();
         CornellContentEntity entity1 = createMockEntity("ext-001", false, "Published");
@@ -162,7 +161,7 @@ public class CiosContentServiceImplTest {
     }
 
     @Test
-    void deleteNotPublishContent_error_externalIdDoesNotExist() throws Exception {
+    void deleteNotPublishContent_error_externalIdDoesNotExist() {
         // Arrange
         List<CornellContentEntity> entities = new ArrayList<>();
         CornellContentEntity entity1 = createMockEntity("ext-001", false, Constants.NOT_INITIATED);
@@ -190,7 +189,7 @@ public class CiosContentServiceImplTest {
     }
 
     @Test
-    void deleteNotPublishContent_error_ciosDataNull() throws Exception {
+    void deleteNotPublishContent_error_ciosDataNull() {
         // Arrange
         List<CornellContentEntity> entities = new ArrayList<>();
         CornellContentEntity entity1 = new CornellContentEntity();
@@ -223,7 +222,7 @@ public class CiosContentServiceImplTest {
     }
 
     @Test
-    void deleteNotPublishContent_error_missingStatusInCiosData() throws Exception {
+    void deleteNotPublishContent_error_missingStatusInCiosData() {
         // Arrange
         List<CornellContentEntity> entities = new ArrayList<>();
         CornellContentEntity entity1 = new CornellContentEntity();
@@ -262,7 +261,7 @@ public class CiosContentServiceImplTest {
     }
 
     @Test
-    void deleteNotPublishContent_mixedScenario_someSuccessSomeErrors() throws Exception {
+    void deleteNotPublishContent_mixedScenario_someSuccessSomeErrors() {
         // Arrange
         List<CornellContentEntity> entities = new ArrayList<>();
         CornellContentEntity entity1 = createMockEntity("ext-001", false, Constants.NOT_INITIATED); // Valid - should delete
@@ -298,11 +297,11 @@ public class CiosContentServiceImplTest {
 
         // Only entity1 should be deleted
         verify(repository, times(1)).delete(entity1);
-        verify(esUtilService, times(1)).deleteDocument(eq(partnerCode + "_ext-001"), eq(Constants.CIOS_CONTENT_INDEX_NAME));
+        verify(esUtilService, times(1)).deleteDocument(partnerCode + "_ext-001", Constants.CIOS_CONTENT_INDEX_NAME);
     }
 
     @Test
-    void deleteNotPublishContent_emptyExternalIdList() throws Exception {
+    void deleteNotPublishContent_emptyExternalIdList() {
         // Arrange
         deleteContentRequestDto.setExternalId(Collections.emptyList());
         when(repository.findByExternalIdInAndPartnerCode(anyList(), anyString())).thenReturn(Collections.emptyList());
@@ -326,7 +325,7 @@ public class CiosContentServiceImplTest {
     }
 
     @Test
-    void saveOrUpdateContent_createNewContent_success() throws Exception {
+    void saveOrUpdateContent_createNewContent_success() {
         // Arrange
         String externalId = "new-ext-001";
         Timestamp currentTime = new Timestamp(System.currentTimeMillis());
@@ -372,7 +371,7 @@ public class CiosContentServiceImplTest {
     }
 
     @Test
-    void saveOrUpdateContent_updateExistingContent_success() throws Exception {
+    void saveOrUpdateContent_updateExistingContent_success() {
         // Arrange
         String externalId = "existing-ext-001";
         Timestamp createdTime = new Timestamp(System.currentTimeMillis() - 100000);
@@ -428,7 +427,7 @@ public class CiosContentServiceImplTest {
     }
 
     @Test
-    void saveOrUpdateContent_verifyElasticsearchDocumentUpdate() throws Exception {
+    void saveOrUpdateContent_verifyElasticsearchDocumentUpdate() {
         // Arrange
         String externalId = "es-test-001";
         Timestamp currentTime = new Timestamp(System.currentTimeMillis());
@@ -465,7 +464,7 @@ public class CiosContentServiceImplTest {
     }
 
     @Test
-    void saveOrUpdateContent_verifyDataFlattening() throws Exception {
+    void saveOrUpdateContent_verifyDataFlattening() {
         // Arrange
         String externalId = "flatten-test-001";
         Timestamp currentTime = new Timestamp(System.currentTimeMillis());
@@ -498,7 +497,7 @@ public class CiosContentServiceImplTest {
     }
 
     @Test
-    void saveOrUpdateContent_updateExistingContent_preservesCreatedDate() throws Exception {
+    void saveOrUpdateContent_updateExistingContent_preservesCreatedDate() {
         // Arrange
         String externalId = "preserve-date-001";
         Timestamp originalCreatedTime = new Timestamp(System.currentTimeMillis() - 1000000);
@@ -539,7 +538,7 @@ public class CiosContentServiceImplTest {
     }
 
     @Test
-    void saveOrUpdateContent_togglesIsActiveFlag() throws Exception {
+    void saveOrUpdateContent_togglesIsActiveFlag() {
         // Arrange
         String externalId = "active-toggle-001";
         Timestamp currentTime = new Timestamp(System.currentTimeMillis());
@@ -582,7 +581,7 @@ public class CiosContentServiceImplTest {
     }
 
     @Test
-    void saveOrUpdateContent_updatesPartnerCodeInTransformData() throws Exception {
+    void saveOrUpdateContent_updatesPartnerCodeInTransformData() {
         // Arrange
         String externalId = "partner-code-001";
         Timestamp currentTime = new Timestamp(System.currentTimeMillis());
