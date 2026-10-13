@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class CbServerPropertiesTest {
 
     @Test
-    void settersAndGetters_roundTrip() {
+    void cornellAndContentSettersAndGetters_roundTrip() {
         CbServerProperties props = new CbServerProperties();
 
         props.setFixedUrl("/fixed");
@@ -32,33 +32,6 @@ class CbServerPropertiesTest {
         props.setCiosContentOnboardTopic("onboard-topic");
         props.setCiosContentFileCloudFolderName("content-folder");
         props.cornellPartnerCode = "CORNELL";
-        props.courseraPartnerCode = "COURSERA";
-        props.setCourseraEnrollmentServiceCode("COURSERA_SVC");
-        props.setCourseraEnrollmentListLimit(25);
-        props.setCourseraEnrollmentListCourseType("course-type");
-        props.setCourseraDateRange(30L);
-        props.setCourseraDateBefore("before");
-        props.setCourseraDateAfter("after");
-        props.setCdacEnrollmentServiceCode("CDAC_SVC");
-        props.cdacApiKey = "cdac-key";
-        props.cdacPartnerCode = "CDAC";
-        props.keycloakUrl = "http://keycloak";
-        props.ssoRealm = "realm";
-        props.ssoUsername = "admin";
-        props.ssoPassword = "password";
-        props.ssoAdminTokenEndpoint = "/token";
-        props.ssoConfigCreateApi = "/sso/create";
-        props.ssoConfigMapperReadApi = "/sso/mapper/read";
-        props.ssoConfigMapperUpdateApi = "/sso/mapper/update";
-        props.setHarvardSftpHost("sftp-host");
-        props.setHarvardSftpPort(22);
-        props.setHarvardSftpUsername("sftp-user");
-        props.setHarvardSftpPassword("sftp-pass");
-        props.setHarvardSftpRemoteDirectory("/remote");
-        props.setHarvardSftpCompletedDirectory("/completed");
-        props.harvardPartnerCode = "HARVARD";
-        props.setHarvardAllowedFileExtensions(".xlsx,.csv");
-        props.setSsoConfigReadApi("/sso/read");
 
         assertEquals("/fixed", props.getFixedUrl());
         assertEquals("http://locator", props.getServiceLocatorHost());
@@ -82,6 +55,23 @@ class CbServerPropertiesTest {
         assertEquals("onboard-topic", props.getCiosContentOnboardTopic());
         assertEquals("content-folder", props.getCiosContentFileCloudFolderName());
         assertEquals("CORNELL", props.cornellPartnerCode);
+    }
+
+    @Test
+    void courseraAndCdacSettersAndGetters_roundTrip() {
+        CbServerProperties props = new CbServerProperties();
+
+        props.courseraPartnerCode = "COURSERA";
+        props.setCourseraEnrollmentServiceCode("COURSERA_SVC");
+        props.setCourseraEnrollmentListLimit(25);
+        props.setCourseraEnrollmentListCourseType("course-type");
+        props.setCourseraDateRange(30L);
+        props.setCourseraDateBefore("before");
+        props.setCourseraDateAfter("after");
+        props.setCdacEnrollmentServiceCode("CDAC_SVC");
+        props.cdacApiKey = "cdac-key";
+        props.cdacPartnerCode = "CDAC";
+
         assertEquals("COURSERA", props.courseraPartnerCode);
         assertEquals("COURSERA_SVC", props.getCourseraEnrollmentServiceCode());
         assertEquals(25, props.getCourseraEnrollmentListLimit());
@@ -92,6 +82,22 @@ class CbServerPropertiesTest {
         assertEquals("CDAC_SVC", props.getCdacEnrollmentServiceCode());
         assertEquals("cdac-key", props.cdacApiKey);
         assertEquals("CDAC", props.cdacPartnerCode);
+    }
+
+    @Test
+    void ssoSettersAndGetters_roundTrip() {
+        CbServerProperties props = new CbServerProperties();
+
+        props.keycloakUrl = "http://keycloak";
+        props.ssoRealm = "realm";
+        props.ssoUsername = "admin";
+        props.ssoPassword = "password";
+        props.ssoAdminTokenEndpoint = "/token";
+        props.ssoConfigCreateApi = "/sso/create";
+        props.ssoConfigMapperReadApi = "/sso/mapper/read";
+        props.ssoConfigMapperUpdateApi = "/sso/mapper/update";
+        props.setSsoConfigReadApi("/sso/read");
+
         assertEquals("http://keycloak", props.keycloakUrl);
         assertEquals("realm", props.ssoRealm);
         assertEquals("admin", props.ssoUsername);
@@ -100,6 +106,22 @@ class CbServerPropertiesTest {
         assertEquals("/sso/create", props.ssoConfigCreateApi);
         assertEquals("/sso/mapper/read", props.ssoConfigMapperReadApi);
         assertEquals("/sso/mapper/update", props.ssoConfigMapperUpdateApi);
+        assertEquals("/sso/read", props.getSsoConfigReadApi());
+    }
+
+    @Test
+    void harvardSettersAndGetters_roundTrip() {
+        CbServerProperties props = new CbServerProperties();
+
+        props.setHarvardSftpHost("sftp-host");
+        props.setHarvardSftpPort(22);
+        props.setHarvardSftpUsername("sftp-user");
+        props.setHarvardSftpPassword("sftp-pass");
+        props.setHarvardSftpRemoteDirectory("/remote");
+        props.setHarvardSftpCompletedDirectory("/completed");
+        props.harvardPartnerCode = "HARVARD";
+        props.setHarvardAllowedFileExtensions(".xlsx,.csv");
+
         assertEquals("sftp-host", props.getHarvardSftpHost());
         assertEquals(22, props.getHarvardSftpPort());
         assertEquals("sftp-user", props.getHarvardSftpUsername());
@@ -108,7 +130,6 @@ class CbServerPropertiesTest {
         assertEquals("/completed", props.getHarvardSftpCompletedDirectory());
         assertEquals("HARVARD", props.harvardPartnerCode);
         assertEquals(".xlsx,.csv", props.getHarvardAllowedFileExtensions());
-        assertEquals("/sso/read", props.getSsoConfigReadApi());
     }
 
     @Test

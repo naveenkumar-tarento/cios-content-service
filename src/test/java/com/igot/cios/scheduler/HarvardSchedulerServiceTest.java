@@ -306,9 +306,9 @@ class HarvardSchedulerServiceTest {
 
     @Test
     void testProcessFileSafely_innerFailure_stillReturnsTrueSinceProcessFileSwallowsExceptions() throws Exception {
-        // processFile() has its own catch(Exception) that logs and never rethrows, so
-        // processFileSafely()'s own catch branch is unreachable with the current
-        // implementation - this documents existing behavior as-is.
+        // The private processFile method already logs and swallows every exception internally
+        // instead of rethrowing, so the outer catch branch here is unreachable in practice.
+        // This test documents the existing behavior as-is.
         String fileName = "igot_HMM12_20260127.csv";
         String remoteFilePath = "/igot_cl/igot_HMM12_20260127.csv";
 

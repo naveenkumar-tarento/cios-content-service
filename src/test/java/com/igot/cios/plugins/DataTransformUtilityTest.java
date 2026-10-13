@@ -1060,7 +1060,7 @@ class DataTransformUtilityTest {
     }
 
     @Test
-    void inflateAndDecode_validDeflatedBase64_returnsOriginalString() throws Exception {
+    void inflateAndDecode_validDeflatedBase64_returnsOriginalString() {
         String original = "<samlp:Request>test</samlp:Request>";
         Deflater deflater = new Deflater(Deflater.DEFLATED, true);
         deflater.setInput(original.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -1117,8 +1117,9 @@ class DataTransformUtilityTest {
         when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(Void.class)))
                 .thenThrow(new RuntimeException("down"));
 
+        Map<String, Object> payload = Map.of();
         assertThrows(CiosContentException.class,
-                () -> dataTransformUtility.createSsoConfiguration("token1", Map.of()));
+                () -> dataTransformUtility.createSsoConfiguration("token1", payload));
     }
 
     @Test

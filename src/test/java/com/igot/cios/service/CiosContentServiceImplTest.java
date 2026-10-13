@@ -841,7 +841,7 @@ class CiosContentServiceImplTest {
     void searchContent_success_returnsSearchResult() {
         SearchCriteria criteria = new SearchCriteria();
         SearchResult expected = new SearchResult();
-        when(esUtilService.searchDocuments(eq(Constants.CIOS_CONTENT_INDEX_NAME), eq(criteria))).thenReturn(expected);
+        when(esUtilService.searchDocuments(Constants.CIOS_CONTENT_INDEX_NAME, criteria)).thenReturn(expected);
 
         SearchResult result = ciosContentService.searchContent(criteria);
 

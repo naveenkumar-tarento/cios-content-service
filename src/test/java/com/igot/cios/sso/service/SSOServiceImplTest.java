@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -261,6 +262,106 @@ class SSOServiceImplTest {
         node.put(Constants.SSO_ID, ssoId);
         node.put(Constants.CONFIGURATION, Constants.INCOMPLETE);
         return node;
+    }
+
+    @Test
+    void createSsoConfiguration_idCreationFails_returnsFailedResponse() {
+        ObjectNode payload = setupValidSsoDetailsForCreate();
+
+        when(ssoRepository.findById("p1")).thenReturn(Optional.empty());
+        when(dataTransformUtility.getAdminAccessToken()).thenReturn("token");
+        when(dataTransformUtility.createSsoConfiguration(any(), any())).thenReturn(null);
+
+        SBApiResponse response = service.createSsoConfiguration(payload, "p1");
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        verify(ssoRepository, never()).save(any());
+    }
+
+    @Test
+    void updateSsoConfiguration_configurationComplete_validatesFinalSchema() {
+        ObjectNode ssoDetails = setupValidSsoDetailsForUpdate();
+        ssoDetails.put(Constants.CONFIGURATION, Constants.COMPLETE);
+        SSOConfiguration existingConfig = new SSOConfiguration();
+        existingConfig.setCreatedOn(new java.sql.Timestamp(System.currentTimeMillis()));
+
+        when(ssoRepository.findById(partnerId)).thenReturn(Optional.of(existingConfig));
+        when(dataTransformUtility.getAdminAccessToken()).thenReturn(token);
+        when(dataTransformUtility.getExistingMappers(token, ssoId)).thenReturn(new HashMap<>());
+        doNothing().when(dataTransformUtility).updateSsoConfiguration(anyString(), anyString(), any());
+        when(ssoRepository.save(any())).thenReturn(existingConfig);
+
+        SBApiResponse response = service.updateSsoConfiguration(ssoDetails, partnerId);
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        verify(payloadValidation).validatePayload(eq(Constants.FINAL_SSO_CONFIGURATION_VALIDATION_FILE_JSON), any());
+    }
+
+    @Test
+    void createSsoConfiguration_withUuidMapper_buildsScriptMapper() {
+        ObjectNode payload = setupValidSsoDetailsForCreate();
+        payload.set(Constants.MAPPERS, objectMapper.createObjectNode().put("userIdField", Constants.UUID));
+
+        when(ssoRepository.findById("p1")).thenReturn(Optional.empty());
+        when(dataTransformUtility.getAdminAccessToken()).thenReturn("token");
+        when(dataTransformUtility.createSsoConfiguration(any(), any())).thenReturn("kc-client-id");
+        when(ssoRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        SBApiResponse response = service.createSsoConfiguration(payload, "p1");
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+    @Test
+    void createSsoConfiguration_withUserFullNameMapper_buildsUserPropertyMapper() {
+        ObjectNode payload = setupValidSsoDetailsForCreate();
+        payload.set(Constants.MAPPERS, objectMapper.createObjectNode().put("fullName", Constants.USER_FULLNAME));
+
+        when(ssoRepository.findById("p1")).thenReturn(Optional.empty());
+        when(dataTransformUtility.getAdminAccessToken()).thenReturn("token");
+        when(dataTransformUtility.createSsoConfiguration(any(), any())).thenReturn("kc-client-id");
+        when(ssoRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        SBApiResponse response = service.createSsoConfiguration(payload, "p1");
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+    @Test
+    void createSsoConfiguration_withLiteralMapper_buildsScriptMapperWithLiteralValue() {
+        ObjectNode payload = setupValidSsoDetailsForCreate();
+        payload.set(Constants.MAPPERS, objectMapper.createObjectNode().put("role", "anonymous"));
+
+        when(ssoRepository.findById("p1")).thenReturn(Optional.empty());
+        when(dataTransformUtility.getAdminAccessToken()).thenReturn("token");
+        when(dataTransformUtility.createSsoConfiguration(any(), any())).thenReturn("kc-client-id");
+        when(ssoRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        SBApiResponse response = service.createSsoConfiguration(payload, "p1");
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+    @Test
+    void updateSsoConfiguration_withExistingMapperId_callsUpdateProtocolMapper() {
+        ObjectNode ssoDetails = setupValidSsoDetailsForUpdate();
+        SSOConfiguration existingConfig = new SSOConfiguration();
+        existingConfig.setCreatedOn(new java.sql.Timestamp(System.currentTimeMillis()));
+
+        Map<String, String> existingMapperIds = new HashMap<>();
+        existingMapperIds.put("email", "existing-mapper-id");
+
+        when(ssoRepository.findById(partnerId)).thenReturn(Optional.of(existingConfig));
+        when(dataTransformUtility.getAdminAccessToken()).thenReturn(token);
+        when(dataTransformUtility.getExistingMappers(token, ssoId)).thenReturn(existingMapperIds);
+        doNothing().when(dataTransformUtility).updateSsoConfiguration(anyString(), anyString(), any());
+        when(ssoRepository.save(any())).thenReturn(existingConfig);
+
+        SBApiResponse response = service.updateSsoConfiguration(ssoDetails, partnerId);
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        verify(dataTransformUtility, times(1)).updateProtocolMapper(anyString(), anyString(), any());
+        verify(dataTransformUtility, never()).createProtocolMapper(anyString(), anyString(), any());
     }
 
     @Test

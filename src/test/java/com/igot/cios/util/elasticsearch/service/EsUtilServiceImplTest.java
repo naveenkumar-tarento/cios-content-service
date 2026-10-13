@@ -63,8 +63,55 @@ class EsUtilServiceImplTest {
     void updateDocument_unresolvableSchemaPath_propagatesIllegalArgumentException() {
         // updateDocument only catches IOException; a null schema InputStream makes objectMapper.readValue
         // throw IllegalArgumentException, which is not caught - this documents existing behavior as-is.
+        Map<String, Object> document = new HashMap<>();
         assertThrows(IllegalArgumentException.class, () ->
-                esUtilService.updateDocument("index1", "doc1", new HashMap<>(), "/non-existent-schema.json"));
+                esUtilService.updateDocument("index1", "doc1", document, "/non-existent-schema.json"));
+    }
+
+    @Test
+    void addDocument_success_filtersAndIndexesDocument() throws Exception {
+        Map<String, Object> document = new HashMap<>();
+        document.put("externalId", "ext1");
+        document.put("name", "Course One");
+        document.put("fieldNotInSchema", "should be filtered out");
+
+        IndexResponse indexResponse = mock(IndexResponse.class);
+        when(indexResponse.result()).thenReturn(Result.Created);
+        when(elasticsearchClient.index(any(IndexRequest.class))).thenReturn(indexResponse);
+
+        String result = esUtilService.addDocument("index1", "doc1", document,
+                "/EsFieldsMapping/esRequiredFieldsJsonFilePath.json");
+
+        assertNotNull(result);
+        assertTrue(result.contains("Successfully indexed"));
+    }
+
+    @Test
+    void addDocument_esClientThrows_returnsNull() throws Exception {
+        Map<String, Object> document = new HashMap<>();
+        document.put("externalId", "ext1");
+        when(elasticsearchClient.index(any(IndexRequest.class))).thenThrow(new RuntimeException("es down"));
+
+        String result = esUtilService.addDocument("index1", "doc1", document,
+                "/EsFieldsMapping/esRequiredFieldsJsonFilePath.json");
+
+        assertNull(result);
+    }
+
+    @Test
+    void updateDocument_success_returnsResultJsonValue() throws Exception {
+        Map<String, Object> document = new HashMap<>();
+        document.put("externalId", "ext1");
+        document.put("fieldNotInSchema", "should be filtered out");
+
+        IndexResponse indexResponse = mock(IndexResponse.class);
+        when(indexResponse.result()).thenReturn(Result.Updated);
+        when(elasticsearchClient.index(any(IndexRequest.class))).thenReturn(indexResponse);
+
+        String result = esUtilService.updateDocument("index1", "doc1", document,
+                "/EsFieldsMapping/esRequiredFieldsJsonFilePath.json");
+
+        assertNotNull(result);
     }
 
     @Test
@@ -131,7 +178,8 @@ class EsUtilServiceImplTest {
         JsonNode entity = realObjectMapper.createObjectNode().put("id", "doc1");
         when(elasticsearchClient.bulk(any(BulkRequest.class))).thenThrow(new RuntimeException("bulk failed"));
 
-        assertThrows(CiosContentException.class, () -> esUtilService.saveAll("index1", List.of(entity)));
+        List<JsonNode> entities = List.of(entity);
+        assertThrows(CiosContentException.class, () -> esUtilService.saveAll("index1", entities));
     }
 
     @Test

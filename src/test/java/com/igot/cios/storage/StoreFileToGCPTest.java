@@ -91,7 +91,7 @@ class StoreFileToGCPTest {
     }
 
     @Test
-    void uploadCiosContentFile_success_transfersAndUploads() throws IOException {
+    void uploadCiosContentFile_success_transfersAndUploads() {
         MultipartFile multipartFile = new MockMultipartFile("file", "content.xlsx", "application/octet-stream", "data".getBytes());
         when(storageService.upload(anyString(), anyString(), anyString(), any(), any(), any(), any()))
                 .thenReturn("https://cloud/bucket/content");
