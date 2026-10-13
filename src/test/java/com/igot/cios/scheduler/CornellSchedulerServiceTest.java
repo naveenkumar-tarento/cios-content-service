@@ -136,6 +136,33 @@ class CornellSchedulerServiceTest {
     }
 
     @Test
+    void testLoadCornellEnrollment_success() throws Exception {
+        when(cbServerProperties.getCornellEnrollmentServiceCode()).thenReturn("CORNELL_SERVICE");
+        when(cbServerProperties.getCornellEnrollmentListLimit()).thenReturn(100);
+        when(cbServerProperties.getCornellEnrollmentListCourseType()).thenReturn("online");
+        when(cbServerProperties.getCornellDateRange()).thenReturn(7);
+        when(cbServerProperties.getServiceLocatorHost()).thenReturn("http://localhost");
+        when(cbServerProperties.getServiceLocatorFixedUrl()).thenReturn("/svc");
+
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+        when(objectMapper.createArrayNode()).thenReturn(realObjectMapper.createArrayNode());
+        ObjectNode apiResponseBody = realObjectMapper.createObjectNode();
+        apiResponseBody.put(Constants.COUNT, 0);
+        apiResponseBody.putArray(Constants.DATA);
+        when(objectMapper.valueToTree(any())).thenReturn(apiResponseBody);
+        when(restTemplate.exchange(anyString(), any(HttpMethod.class), any(HttpEntity.class), eq(Object.class)))
+                .thenReturn(ResponseEntity.ok(new Object()));
+
+        ObjectNode partnerInfo = realObjectMapper.createObjectNode();
+        partnerInfo.put(Constants.ID, "partner-1");
+        when(dataTransformUtility.fetchPartnerInfoUsingApi(any())).thenReturn(partnerInfo);
+
+        SBApiResponse result = cornellSchedulerService.loadCornellEnrollment();
+
+        assertEquals(HttpStatus.OK, result.getResponseCode());
+    }
+
+    @Test
     void testFormUrlMapForEnrollment() throws Exception {
         when(cbServerProperties.getCornellDateRange()).thenReturn(7);
         when(cbServerProperties.getCornellEnrollmentListCourseType()).thenReturn("online");

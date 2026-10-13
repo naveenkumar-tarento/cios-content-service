@@ -4,13 +4,22 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.igot.cios.dto.DeleteContentRequestDto;
+import com.igot.cios.dto.RequestDto;
 import com.igot.cios.dto.SBApiResponse;
 import com.igot.cios.entity.CornellContentEntity;
+import com.igot.cios.entity.FileInfoEntity;
+import com.igot.cios.exception.CiosContentException;
+import com.igot.cios.kafka.KafkaProducer;
 import com.igot.cios.plugins.DataTransformUtility;
 import com.igot.cios.repository.CornellContentRepository;
+import com.igot.cios.repository.FileInfoRepository;
 import com.igot.cios.service.impl.CiosContentServiceImpl;
+import com.igot.cios.storage.StoreFileToGCP;
 import com.igot.cios.util.CbServerProperties;
 import com.igot.cios.util.Constants;
+import com.igot.cios.util.PayloadValidation;
+import com.igot.cios.util.elasticsearch.dto.SearchCriteria;
+import com.igot.cios.util.elasticsearch.dto.SearchResult;
 import com.igot.cios.util.elasticsearch.service.EsUtilService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,9 +27,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.sql.Timestamp;
 import java.util.*;
@@ -46,6 +60,18 @@ class CiosContentServiceImplTest {
 
     @Mock
     private ObjectMapper objectMapper;
+
+    @Mock
+    private KafkaProducer kafkaProducer;
+
+    @Mock
+    private PayloadValidation payloadValidation;
+
+    @Mock
+    private FileInfoRepository fileInfoRepository;
+
+    @Mock
+    private StoreFileToGCP storeFileToGCP;
 
     @InjectMocks
     private CiosContentServiceImpl ciosContentService;
@@ -613,6 +639,264 @@ class CiosContentServiceImplTest {
     }
 
     // -------------------- HELPER METHODS --------------------
+
+    // -------------------- loadContentFromExcel --------------------
+
+    @Test
+    void loadContentFromExcel_invalidFileFormat_returnsBadRequest() {
+        MultipartFile file = new MockMultipartFile("file", "data.txt", "text/plain", "data".getBytes());
+
+        SBApiResponse response = ciosContentService.loadContentFromExcel(file, "partner1", "p1");
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void loadContentFromExcel_uploadFails_returnsInternalServerError() {
+        MultipartFile file = new MockMultipartFile("file", "data.xlsx", "application/octet-stream", "data".getBytes());
+        when(cbServerProperties.getCiosCloudContainerName()).thenReturn("container1");
+        when(cbServerProperties.getCiosContentFileCloudFolderName()).thenReturn("folder1");
+        SBApiResponse uploadResponse = SBApiResponse.createDefaultResponse("upload");
+        uploadResponse.getParams().setStatus(Constants.FAILED);
+        uploadResponse.getParams().setErrmsg("upload failed");
+        uploadResponse.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        when(storeFileToGCP.uploadCiosContentFile(any(), anyString(), anyString())).thenReturn(uploadResponse);
+
+        SBApiResponse response = ciosContentService.loadContentFromExcel(file, "partner1", "p1");
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void loadContentFromExcel_success_pushesToKafka() {
+        MultipartFile file = new MockMultipartFile("file", "data.xlsx", "application/octet-stream", "data".getBytes());
+        when(cbServerProperties.getCiosCloudContainerName()).thenReturn("container1");
+        when(cbServerProperties.getCiosContentFileCloudFolderName()).thenReturn("folder1");
+        SBApiResponse uploadResponse = SBApiResponse.createDefaultResponse("upload");
+        uploadResponse.setResponseCode(HttpStatus.OK);
+        uploadResponse.getResult().put(Constants.NAME, "uploaded.xlsx");
+        when(storeFileToGCP.uploadCiosContentFile(any(), anyString(), anyString())).thenReturn(uploadResponse);
+        when(dataTransformUtility.createFileInfo(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn("file-1");
+        when(cbServerProperties.getCiosContentOnboardTopic()).thenReturn("onboard-topic");
+
+        SBApiResponse response = ciosContentService.loadContentFromExcel(file, "partner1", "p1");
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        verify(kafkaProducer).push(eq("onboard-topic"), any());
+    }
+
+    @Test
+    void loadContentFromExcel_exceptionThrown_returnsBadRequest() {
+        MultipartFile file = new MockMultipartFile("file", "data.xlsx", "application/octet-stream", "data".getBytes());
+        when(cbServerProperties.getCiosCloudContainerName()).thenThrow(new RuntimeException("config missing"));
+
+        SBApiResponse response = ciosContentService.loadContentFromExcel(file, "partner1", "p1");
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    // -------------------- fetchAllContentFromSecondaryDb --------------------
+
+    @Test
+    void fetchAllContentFromSecondaryDb_withResults_returnsPaginatedResponse() {
+        RequestDto dto = new RequestDto();
+        dto.setPage(0);
+        dto.setSize(10);
+        Page<CornellContentEntity> page = mock(Page.class);
+        when(page.getContent()).thenReturn(List.of(new CornellContentEntity()));
+        when(page.getTotalPages()).thenReturn(1);
+        when(page.getTotalElements()).thenReturn(1L);
+        when(page.getNumberOfElements()).thenReturn(1);
+        when(page.getSize()).thenReturn(10);
+        when(page.getNumber()).thenReturn(0);
+        when(repository.findAllCiosDataAndIsActive(any(), any(Pageable.class), any())).thenReturn(page);
+
+        var result = ciosContentService.fetchAllContentFromSecondaryDb(dto);
+
+        assertEquals(1, result.getResult().size());
+    }
+
+    @Test
+    void fetchAllContentFromSecondaryDb_nullPageData_returnsEmptyResponse() {
+        RequestDto dto = new RequestDto();
+        dto.setPage(0);
+        dto.setSize(10);
+        when(repository.findAllCiosDataAndIsActive(any(), any(Pageable.class), any())).thenReturn(null);
+
+        var result = ciosContentService.fetchAllContentFromSecondaryDb(dto);
+
+        assertTrue(result.getResult().isEmpty());
+    }
+
+    @Test
+    void fetchAllContentFromSecondaryDb_dataAccessException_wrapsAsCiosContentException() {
+        RequestDto dto = new RequestDto();
+        dto.setPage(0);
+        dto.setSize(10);
+        when(repository.findAllCiosDataAndIsActive(any(), any(Pageable.class), any()))
+                .thenThrow(mock(DataAccessException.class));
+
+        assertThrows(CiosContentException.class, () -> ciosContentService.fetchAllContentFromSecondaryDb(dto));
+    }
+
+    @Test
+    void fetchAllContentFromSecondaryDb_genericException_wrapsAsCiosContentException() {
+        RequestDto dto = new RequestDto();
+        dto.setPage(0);
+        dto.setSize(10);
+        when(repository.findAllCiosDataAndIsActive(any(), any(Pageable.class), any()))
+                .thenThrow(new RuntimeException("db down"));
+
+        assertThrows(CiosContentException.class, () -> ciosContentService.fetchAllContentFromSecondaryDb(dto));
+    }
+
+    // -------------------- loadContentProgressFromExcel --------------------
+
+    @Test
+    void loadContentProgressFromExcel_success_pushesEnrollment() {
+        MultipartFile file = new MockMultipartFile("file", "data.csv", "text/csv", "userid,courseid\nuser1,course1".getBytes());
+        when(dataTransformUtility.processExcelFile(file)).thenReturn(List.of(Map.of("userid", "user1", "courseid", "course1")));
+
+        ObjectNode partnerInfo = realObjectMapper.createObjectNode();
+        partnerInfo.put("id", "partner-1");
+        partnerInfo.putArray("transformProgressJson");
+        when(dataTransformUtility.fetchPartnerInfoUsingApi("partner1")).thenReturn(partnerInfo);
+
+        ObjectNode transformed = realObjectMapper.createObjectNode();
+        transformed.put("userid", "user1");
+        when(dataTransformUtility.transformData(any(), any())).thenReturn(transformed);
+
+        assertDoesNotThrow(() -> ciosContentService.loadContentProgressFromExcel(file, "partner1"));
+
+        verify(kafkaProducer, times(1)).push(any(), any());
+    }
+
+    @Test
+    void loadContentProgressFromExcel_exceptionThrown_wrapsAsCiosContentException() {
+        MultipartFile file = new MockMultipartFile("file", "data.csv", "text/csv", "data".getBytes());
+        when(dataTransformUtility.processExcelFile(file)).thenThrow(new RuntimeException("parse failed"));
+
+        assertThrows(CiosContentException.class, () -> ciosContentService.loadContentProgressFromExcel(file, "partner1"));
+    }
+
+    // -------------------- getAllFileInfos --------------------
+
+    @Test
+    void getAllFileInfos_withResults_returnsList() {
+        when(fileInfoRepository.findByPartnerId("partner1")).thenReturn(List.of(new FileInfoEntity()));
+
+        List<FileInfoEntity> result = ciosContentService.getAllFileInfos("partner1");
+
+        assertEquals(1, result.size());
+    }
+
+    @Test
+    void getAllFileInfos_empty_returnsEmptyList() {
+        when(fileInfoRepository.findByPartnerId("partner1")).thenReturn(Collections.emptyList());
+
+        List<FileInfoEntity> result = ciosContentService.getAllFileInfos("partner1");
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void getAllFileInfos_dataAccessException_wrapsAsCiosContentException() {
+        when(fileInfoRepository.findByPartnerId("partner1")).thenThrow(mock(DataAccessException.class));
+
+        assertThrows(CiosContentException.class, () -> ciosContentService.getAllFileInfos("partner1"));
+    }
+
+    @Test
+    void getAllFileInfos_genericException_wrapsAsCiosContentException() {
+        when(fileInfoRepository.findByPartnerId("partner1")).thenThrow(new RuntimeException("down"));
+
+        assertThrows(CiosContentException.class, () -> ciosContentService.getAllFileInfos("partner1"));
+    }
+
+    // -------------------- readContentByExternalId --------------------
+
+    @Test
+    void readContentByExternalId_found_returnsCiosData() {
+        CornellContentEntity entity = createMockEntity("ext1", false, Constants.NOT_INITIATED);
+        when(repository.findByExternalIdAndPartnerCode("ext1", "partner1")).thenReturn(Optional.of(entity));
+
+        Object result = ciosContentService.readContentByExternalId("partner1", "ext1");
+
+        assertEquals(entity.getCiosData(), result);
+    }
+
+    @Test
+    void readContentByExternalId_notFound_throwsCiosContentException() {
+        when(repository.findByExternalIdAndPartnerCode("ext1", "partner1")).thenReturn(Optional.empty());
+
+        assertThrows(CiosContentException.class, () -> ciosContentService.readContentByExternalId("partner1", "ext1"));
+    }
+
+    // -------------------- searchContent --------------------
+
+    @Test
+    void searchContent_success_returnsSearchResult() {
+        SearchCriteria criteria = new SearchCriteria();
+        SearchResult expected = new SearchResult();
+        when(esUtilService.searchDocuments(eq(Constants.CIOS_CONTENT_INDEX_NAME), eq(criteria))).thenReturn(expected);
+
+        SearchResult result = ciosContentService.searchContent(criteria);
+
+        assertSame(expected, result);
+    }
+
+    @Test
+    void searchContent_exceptionThrown_wrapsAsCiosContentException() {
+        SearchCriteria criteria = new SearchCriteria();
+        when(esUtilService.searchDocuments(anyString(), any())).thenThrow(new RuntimeException("es down"));
+
+        assertThrows(CiosContentException.class, () -> ciosContentService.searchContent(criteria));
+    }
+
+    @Test
+    void updateContent_delegatesToSaveOrUpdateContent() {
+        ObjectNode transformData = realObjectMapper.createObjectNode();
+        ObjectNode content = realObjectMapper.createObjectNode();
+        content.put("name", "Course One");
+        content.put("externalId", "ext1");
+        content.put("isActive", true);
+        ObjectNode contentPartner = realObjectMapper.createObjectNode();
+        contentPartner.put("partnerCode", "partner1");
+        contentPartner.put("id", "p1");
+        content.set("contentPartner", contentPartner);
+        transformData.set(Constants.CONTENT, content);
+
+        when(repository.findByExternalIdAndPartnerId(anyString(), anyString())).thenReturn(Optional.empty());
+        when(cbServerProperties.getElasticCiosContentJsonPath()).thenReturn("/path/mapping.json");
+
+        Object result = ciosContentService.updateContent(transformData);
+
+        assertNotNull(result);
+        assertTrue(result instanceof CornellContentEntity);
+        assertEquals("ext1", ((CornellContentEntity) result).getExternalId());
+    }
+
+    @Test
+    void loadContentFromExcel_nullFilename_returnsBadRequest() {
+        MultipartFile file = new MockMultipartFile("file", null, "text/plain", "data".getBytes());
+
+        SBApiResponse response = ciosContentService.loadContentFromExcel(file, "partner1", "p1");
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void loadContentProgressFromExcel_callEnrollmentApiThrows_wrapsAsCiosContentException() {
+        MultipartFile file = new MockMultipartFile("file", "data.csv", "text/csv", "userid,courseid\nuser1,course1".getBytes());
+        when(dataTransformUtility.processExcelFile(file)).thenReturn(List.of(Map.of("userid", "user1", "courseid", "course1")));
+        when(dataTransformUtility.fetchPartnerInfoUsingApi("partner1")).thenThrow(new RuntimeException("partner lookup failed"));
+
+        assertThrows(CiosContentException.class, () -> ciosContentService.loadContentProgressFromExcel(file, "partner1"));
+    }
 
     private CornellContentEntity createMockEntity(String externalId, boolean isActive, String status) {
         CornellContentEntity entity = new CornellContentEntity();

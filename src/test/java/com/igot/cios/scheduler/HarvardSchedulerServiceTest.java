@@ -284,6 +284,44 @@ class HarvardSchedulerServiceTest {
     }
 
     @Test
+    void testProcessFileSafely_success_returnsTrue() throws Exception {
+        String fileName = "igot_HMM12_20260127.csv";
+        String remoteFilePath = "/igot_cl/igot_HMM12_20260127.csv";
+        byte[] fileData = "test,data\n1,2".getBytes();
+        InputStream inputStream = new ByteArrayInputStream(fileData);
+
+        when(cbServerProperties.getHarvardSftpRemoteDirectory()).thenReturn("/igot_cl");
+        when(cbServerProperties.getHarvardSftpCompletedDirectory()).thenReturn("/igot_cl/completed");
+        when(cbServerProperties.getHarvardPartnerCode()).thenReturn("HARVARD");
+        when(channelSftp.get(remoteFilePath)).thenReturn(inputStream);
+        doNothing().when(ciosContentService).loadContentProgressFromExcel(any(MultipartFile.class), eq("HARVARD"));
+        doNothing().when(channelSftp).cd("/igot_cl/completed");
+        doNothing().when(channelSftp).rename(anyString(), anyString());
+
+        Method method = HarvardSchedulerService.class.getDeclaredMethod("processFileSafely", ChannelSftp.class, String.class);
+        method.setAccessible(true);
+
+        assertTrue((Boolean) method.invoke(harvardSchedulerService, channelSftp, fileName));
+    }
+
+    @Test
+    void testProcessFileSafely_innerFailure_stillReturnsTrueSinceProcessFileSwallowsExceptions() throws Exception {
+        // processFile() has its own catch(Exception) that logs and never rethrows, so
+        // processFileSafely()'s own catch branch is unreachable with the current
+        // implementation - this documents existing behavior as-is.
+        String fileName = "igot_HMM12_20260127.csv";
+        String remoteFilePath = "/igot_cl/igot_HMM12_20260127.csv";
+
+        when(cbServerProperties.getHarvardSftpRemoteDirectory()).thenReturn("/igot_cl");
+        when(channelSftp.get(remoteFilePath)).thenThrow(new RuntimeException("unexpected failure"));
+
+        Method method = HarvardSchedulerService.class.getDeclaredMethod("processFileSafely", ChannelSftp.class, String.class);
+        method.setAccessible(true);
+
+        assertTrue((Boolean) method.invoke(harvardSchedulerService, channelSftp, fileName));
+    }
+
+    @Test
     void testMoveFileToCompleted_success() throws Exception {
         String fileName = "igot_HMM12_20260127.csv";
         String sourceFile = "/igot_cl/igot_HMM12_20260127.csv";
