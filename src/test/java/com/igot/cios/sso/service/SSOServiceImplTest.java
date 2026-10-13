@@ -365,6 +365,92 @@ class SSOServiceImplTest {
     }
 
     @Test
+    void updateSsoConfiguration_userFullNameMapperWithExistingId_callsUpdateProtocolMapper() {
+        ObjectNode ssoDetails = setupValidSsoDetailsForCreate();
+        ssoDetails.set(Constants.MAPPERS, objectMapper.createObjectNode().put("fullName", Constants.USER_FULLNAME));
+        ssoDetails.put(Constants.SSO_ID, ssoId);
+        ssoDetails.put(Constants.CONFIGURATION, Constants.INCOMPLETE);
+
+        SSOConfiguration existingConfig = new SSOConfiguration();
+        existingConfig.setCreatedOn(new java.sql.Timestamp(System.currentTimeMillis()));
+
+        Map<String, String> existingMapperIds = new HashMap<>();
+        existingMapperIds.put("fullName", "existing-mapper-id");
+
+        when(ssoRepository.findById(partnerId)).thenReturn(Optional.of(existingConfig));
+        when(dataTransformUtility.getAdminAccessToken()).thenReturn(token);
+        when(dataTransformUtility.getExistingMappers(token, ssoId)).thenReturn(existingMapperIds);
+        doNothing().when(dataTransformUtility).updateSsoConfiguration(anyString(), anyString(), any());
+        when(ssoRepository.save(any())).thenReturn(existingConfig);
+
+        SBApiResponse response = service.updateSsoConfiguration(ssoDetails, partnerId);
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        verify(dataTransformUtility, times(1)).updateProtocolMapper(anyString(), anyString(), any());
+    }
+
+    @Test
+    void createSsoConfiguration_nonArrayRedirectUrl_wrapsAsSingleElementArray() {
+        ObjectNode payload = setupValidSsoDetailsForCreate();
+        payload.put(Constants.VALID_REDIRECT_URL, "http://localhost:8080/single-callback");
+
+        when(ssoRepository.findById("p1")).thenReturn(Optional.empty());
+        when(dataTransformUtility.getAdminAccessToken()).thenReturn("token");
+        when(dataTransformUtility.createSsoConfiguration(any(), any())).thenReturn("kc-client-id");
+        when(ssoRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        SBApiResponse response = service.createSsoConfiguration(payload, "p1");
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+    @Test
+    void testSamlConfiguration_malformedDeeplinkUri_domainCheckReturnsFalse() {
+        ObjectNode request = objectMapper.createObjectNode();
+        request.put(Constants.SSO_ID, ssoId);
+        request.put(Constants.COURSE_DEEPLINK, "http://exa mple.com/course/123");
+
+        JsonNode keycloakClient = setupKeycloakClientResponse();
+
+        when(dataTransformUtility.getAdminAccessToken()).thenReturn(token);
+        when(dataTransformUtility.getSsoConfigurationFromKeycloak(token, ssoId)).thenReturn(keycloakClient);
+
+        SBApiResponse response = service.testSamlConfiguration(request);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals("Course deeplink does not match SP redirect URI domain", response.getParams().getErrmsg());
+    }
+
+    @Test
+    void testSamlConfiguration_inflateAndDecodeThrows_returnsSamlParseFailure() {
+        ObjectNode request = objectMapper.createObjectNode();
+        request.put(Constants.SSO_ID, ssoId);
+        request.put(Constants.COURSE_DEEPLINK, "https://example.com/course/123");
+
+        JsonNode keycloakClient = setupKeycloakClientResponse();
+        String samlFormHtml = """
+            <html>
+            <body>
+            <form method="post" action="https://idp.example.com/saml/sso">
+                <input type="hidden" name="SAMLRequest" value="encodedSamlRequest"/>
+            </form>
+            </body>
+            </html>
+            """;
+
+        when(dataTransformUtility.getAdminAccessToken()).thenReturn(token);
+        when(dataTransformUtility.getSsoConfigurationFromKeycloak(token, ssoId)).thenReturn(keycloakClient);
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(), eq(String.class)))
+                .thenReturn(ResponseEntity.ok(samlFormHtml));
+        when(dataTransformUtility.inflateAndDecode(anyString())).thenThrow(new RuntimeException("decode failed"));
+
+        SBApiResponse response = service.testSamlConfiguration(request);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertTrue(response.getParams().getErrmsg().contains(Constants.SAML_REQUEST_PARSE_FAILED));
+    }
+
+    @Test
     void testSamlConfiguration_missingSsoId() {
         ObjectNode request = objectMapper.createObjectNode();
         request.put(Constants.COURSE_DEEPLINK, "https://example.com/course/123");

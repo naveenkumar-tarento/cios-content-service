@@ -881,7 +881,8 @@ class CiosContentServiceImplTest {
 
     @Test
     void loadContentFromExcel_nullFilename_returnsBadRequest() {
-        MultipartFile file = new MockMultipartFile("file", null, "text/plain", "data".getBytes());
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.getOriginalFilename()).thenReturn(null);
 
         SBApiResponse response = ciosContentService.loadContentFromExcel(file, "partner1", "p1");
 

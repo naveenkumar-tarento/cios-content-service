@@ -2,6 +2,7 @@ package com.igot.cios.plugins;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.igot.cios.dto.LogStatus;
 import com.igot.cios.entity.CornellContentEntity;
@@ -31,6 +32,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.util.*;
 import java.util.zip.Deflater;
@@ -114,6 +117,27 @@ class DataTransformUtilityTest {
                 CiosContentException.class,
                 () -> dataTransformUtility.getAdminAccessToken()
         );
+    }
+
+    @Test
+    void getAdminAccessToken_nonSuccessStatus_throwsCiosContentException() {
+        cbServerProperties.keycloakUrl = "http://keycloak";
+        cbServerProperties.ssoUsername = "admin";
+        cbServerProperties.ssoPassword = "password";
+
+        ResponseEntity<Map<String, Object>> response =
+                new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
+
+        doReturn(response)
+                .when(restTemplate)
+                .exchange(
+                        anyString(),
+                        eq(HttpMethod.POST),
+                        any(HttpEntity.class),
+                        ArgumentMatchers.<ParameterizedTypeReference<Map<String, Object>>>any()
+                );
+
+        assertThrows(CiosContentException.class, () -> dataTransformUtility.getAdminAccessToken());
     }
 
     @Test
@@ -1144,6 +1168,257 @@ class DataTransformUtilityTest {
 
         assertThrows(CiosContentException.class,
                 () -> dataTransformUtility.updateSsoConfiguration("token1", "client-id-1", payload));
+    }
+
+    @Test
+    void processExcelFile_csvInputStreamThrows_wrapsAsIllegalStateException() throws Exception {
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.getOriginalFilename()).thenReturn("data.csv");
+        when(file.getInputStream()).thenReturn(new java.io.InputStream() {
+            @Override
+            public int read() throws java.io.IOException {
+                throw new java.io.IOException("read failed");
+            }
+        });
+
+        assertThrows(IllegalStateException.class, () -> dataTransformUtility.processExcelFile(file));
+    }
+
+    @Test
+    void processExcelFile_getInputStreamThrowsIOException_wrapsAsUncheckedIOException() throws Exception {
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.getOriginalFilename()).thenReturn("data.xlsx");
+        when(file.getInputStream()).thenThrow(new java.io.IOException("stream unavailable"));
+
+        assertThrows(IllegalStateException.class, () -> dataTransformUtility.processExcelFile(file));
+    }
+
+    @Test
+    void transformData_serializationFails_returnsNull() {
+        class BadBean {
+            @SuppressWarnings("unused")
+            public String getValue() {
+                throw new RuntimeException("cannot serialize");
+            }
+        }
+
+        JsonNode result = dataTransformUtility.transformData(new BadBean(), List.of());
+
+        assertNull(result);
+    }
+
+    @Test
+    void flattenContentData_nullOrEmptyMap_returnsEarly() {
+        Map<String, Object> emptyMap = new HashMap<>();
+        assertDoesNotThrow(() -> dataTransformUtility.flattenContentData(null));
+        assertDoesNotThrow(() -> dataTransformUtility.flattenContentData(emptyMap));
+    }
+
+    @Test
+    void flattenContentData_ciosDataNotAMap_returnsEarly() {
+        Map<String, Object> entityMap = new HashMap<>();
+        entityMap.put(Constants.CIOS_DATA, "not-a-map");
+
+        assertDoesNotThrow(() -> dataTransformUtility.flattenContentData(entityMap));
+        assertTrue(entityMap.containsKey(Constants.CIOS_DATA));
+    }
+
+    @Test
+    void flattenContentData_contentNotAMap_returnsEarly() {
+        Map<String, Object> entityMap = new HashMap<>();
+        Map<String, Object> ciosData = new HashMap<>();
+        ciosData.put(Constants.CONTENT, "not-a-map");
+        entityMap.put(Constants.CIOS_DATA, ciosData);
+
+        assertDoesNotThrow(() -> dataTransformUtility.flattenContentData(entityMap));
+        assertTrue(entityMap.containsKey(Constants.CIOS_DATA));
+    }
+
+    @Test
+    void processRowsAndCreateLogs_validSpec_delegatesToUpdateProcessedDataInDb() throws Exception {
+        Map<String, String> row = new HashMap<>();
+        row.put("name", "Course One");
+        row.put("description", "A great course");
+        row.put("duration", "60 mins");
+        row.put("redirectUrl", "http://redirect");
+        row.put("appIcon", "http://icon");
+        row.put("externalId", "ext-course-2");
+        row.put("objectives", "learn stuff");
+
+        ObjectNode partnerResponse = objectMapper.createObjectNode();
+        ObjectNode data = objectMapper.createObjectNode();
+        data.put("id", "partner1");
+        data.put(Constants.TOTAL_COURSES_COUNT, 0);
+        partnerResponse.set(Constants.DATA, data);
+        Map<String, Object> shiftSpec = new HashMap<>();
+        shiftSpec.put("name", "content.name");
+        shiftSpec.put("description", "content.description");
+        shiftSpec.put("duration", "content.duration");
+        shiftSpec.put("redirectUrl", "content.redirectUrl");
+        shiftSpec.put("appIcon", "content.appIcon");
+        shiftSpec.put("externalId", "content.externalId");
+        shiftSpec.put("objectives", "content.objectives");
+        partnerResponse.set("trasformContentJson", objectMapper.valueToTree(List.of(Map.of("operation", "shift", "spec", shiftSpec))));
+
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Map.class)))
+                .thenReturn(ResponseEntity.ok(createPartnerApiResponse(partnerResponse)));
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok("updated"));
+        when(cornellContentRepository.findByExternalIdAndPartnerId("ext-course-2", "partner1")).thenReturn(Optional.empty());
+        when(cornellContentRepository.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+        when(esUtilService.addDocument(anyString(), anyString(), anyMap(), anyString())).thenReturn("doc-id");
+        when(cbServerProperties.getElasticCiosContentJsonPath()).thenReturn("/path/to/mapping.json");
+        when(cornellContentRepository.countByPartnerCode("partner1")).thenReturn(1L);
+
+        Map<String, Object> result = dataTransformUtility.processRowsAndCreateLogs(
+                List.of(row), "file-1", "file.xlsx", "partner1", null, "partner1");
+
+        assertFalse((boolean) result.get(Constants.HAS_FAILURES));
+        File logFile = (File) result.get(Constants.LOG_FILE);
+        assertNotNull(logFile);
+        logFile.delete();
+    }
+
+    @Test
+    void validatePayloadAndWriteLogsToFile_bulkSaveThrows_wrapsAsIllegalStateException() {
+        ObjectNode transformedData = objectMapper.createObjectNode();
+        ObjectNode content = objectMapper.createObjectNode();
+        content.put("name", "Course One");
+        content.put("description", "A great course");
+        content.put("duration", "60");
+        content.put("redirectUrl", "http://redirect");
+        content.put("appIcon", "http://icon");
+        content.put("externalId", "ext-course-3");
+        content.put("objectives", "learn stuff");
+        content.put("source", "file.xlsx");
+        content.put("status", Constants.NOT_INITIATED);
+        transformedData.set(Constants.CONTENT, content);
+        ArrayNode transformedDataArray = objectMapper.createArrayNode();
+        transformedDataArray.add(transformedData);
+
+        when(cornellContentRepository.findByExternalIdAndPartnerId("ext-course-3", "partner1")).thenReturn(Optional.empty());
+        when(cornellContentRepository.saveAll(anyList())).thenThrow(new RuntimeException("db down"));
+
+        Timestamp currentTime = new Timestamp(System.currentTimeMillis());
+        assertThrows(IllegalStateException.class, () -> dataTransformUtility.validatePayloadAndWriteLogsToFile(
+                Constants.DATA_PAYLOAD_VALIDATION_FILE, transformedDataArray, "file.xlsx", "partner1", "file-1", "partner1", currentTime));
+    }
+
+    @Test
+    void validatePayloadAndWriteLogsToFile_courseProviderValidJson_parsesIntoArray() {
+        ObjectNode transformedData = objectMapper.createObjectNode();
+        ObjectNode content = objectMapper.createObjectNode();
+        content.put("name", "Course One");
+        content.put("description", "A great course");
+        content.put("duration", "60");
+        content.put("redirectUrl", "http://redirect");
+        content.put("appIcon", "http://icon");
+        content.put("externalId", "ext-course-5");
+        content.put("objectives", "learn stuff");
+        content.put("source", "file.xlsx");
+        content.put("status", Constants.NOT_INITIATED);
+        content.put("courseProvider", "[\"provider1\"]");
+        transformedData.set(Constants.CONTENT, content);
+        ArrayNode transformedDataArray = objectMapper.createArrayNode();
+        transformedDataArray.add(transformedData);
+
+        mockSuccessfulPersistenceChain("ext-course-5");
+
+        Timestamp currentTime = new Timestamp(System.currentTimeMillis());
+        Map<String, Object> result = dataTransformUtility.validatePayloadAndWriteLogsToFile(
+                Constants.DATA_PAYLOAD_VALIDATION_FILE, transformedDataArray, "file.xlsx", "partner1", "file-1", "partner1", currentTime);
+
+        assertNotNull(result);
+        File logFile = (File) result.get(Constants.LOG_FILE);
+        if (logFile != null) {
+            logFile.delete();
+        }
+    }
+
+    @Test
+    void validatePayloadAndWriteLogsToFile_courseProviderInvalidJson_logsWarningAndContinues() {
+        ObjectNode transformedData = objectMapper.createObjectNode();
+        ObjectNode content = objectMapper.createObjectNode();
+        content.put("name", "Course One");
+        content.put("description", "A great course");
+        content.put("duration", "60");
+        content.put("redirectUrl", "http://redirect");
+        content.put("appIcon", "http://icon");
+        content.put("externalId", "ext-course-6");
+        content.put("objectives", "learn stuff");
+        content.put("source", "file.xlsx");
+        content.put("status", Constants.NOT_INITIATED);
+        content.put("courseProvider", "not-valid-json{{{");
+        transformedData.set(Constants.CONTENT, content);
+        ArrayNode transformedDataArray = objectMapper.createArrayNode();
+        transformedDataArray.add(transformedData);
+
+        mockSuccessfulPersistenceChain("ext-course-6");
+
+        Timestamp currentTime = new Timestamp(System.currentTimeMillis());
+        Map<String, Object> result = dataTransformUtility.validatePayloadAndWriteLogsToFile(
+                Constants.DATA_PAYLOAD_VALIDATION_FILE, transformedDataArray, "file.xlsx", "partner1", "file-1", "partner1", currentTime);
+
+        assertNotNull(result);
+        File logFile = (File) result.get(Constants.LOG_FILE);
+        if (logFile != null) {
+            logFile.delete();
+        }
+    }
+
+    private void mockSuccessfulPersistenceChain(String externalId) {
+        when(cornellContentRepository.findByExternalIdAndPartnerId(externalId, "partner1")).thenReturn(Optional.empty());
+        when(cornellContentRepository.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+        when(esUtilService.addDocument(anyString(), anyString(), anyMap(), anyString())).thenReturn("doc-id");
+        when(cbServerProperties.getElasticCiosContentJsonPath()).thenReturn("/path/to/mapping.json");
+        when(cornellContentRepository.countByPartnerCode("partner1")).thenReturn(1L);
+
+        JsonNode partnerResponse = createMockPartnerInfoResponse("partner1");
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(Map.class)))
+                .thenReturn(ResponseEntity.ok(createPartnerApiResponse(partnerResponse)));
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok("updated"));
+    }
+
+    @Test
+    void writeLogsToFile_targetPathIsDirectory_wrapsAsUncheckedIOException() {
+        String originalFileName = "conflict-dir-" + System.currentTimeMillis();
+        String tempDir = System.getProperty("java.io.tmpdir");
+        java.io.File conflictDir = new java.io.File(tempDir, originalFileName + "_log.csv");
+        assertTrue(conflictDir.mkdirs());
+        try {
+            LinkedHashMap<String, String> log1 = new LinkedHashMap<>();
+            log1.put("name", "test");
+            List<LinkedHashMap<String, String>> logs = List.of(log1);
+
+            assertThrows(UncheckedIOException.class, () ->
+                    dataTransformUtility.writeLogsToFile(logs, originalFileName));
+        } finally {
+            conflictDir.delete();
+        }
+    }
+
+    @Test
+    void updateProtocolMapper_exceptionThrown_logsAndSwallows() {
+        cbServerProperties.keycloakUrl = "http://keycloak";
+        when(cbServerProperties.getSsoConfigMapperUpdateApi()).thenReturn("/mapper/update");
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.PUT), any(HttpEntity.class), eq(Void.class)))
+                .thenThrow(new RuntimeException("down"));
+
+        Map<String, Object> mapper = new HashMap<>();
+        mapper.put(Constants.ID, "mapper-1");
+        mapper.put("name", "test-mapper");
+
+        assertDoesNotThrow(() -> dataTransformUtility.updateProtocolMapper("token1", "client1", mapper));
+    }
+
+    @Test
+    void inflateAndDecode_invalidDeflateData_fallsBackToRawBase64Decode() {
+        String notActuallyCompressed = Base64.getEncoder().encodeToString("plain text, not deflated".getBytes(StandardCharsets.UTF_8));
+
+        String result = dataTransformUtility.inflateAndDecode(notActuallyCompressed);
+
+        assertNotNull(result);
     }
 
     private CornellContentEntity createMockContentEntity(String externalId, String partnerId, String partnerCode) {

@@ -206,10 +206,69 @@ class EsUtilServiceImplTest {
     }
 
     @Test
+    void deleteDocumentsByCriteria_bulkHasErrors_logsErrorButDoesNotThrow() throws Exception {
+        SearchResponse<Object> responseWithHits = buildSearchResponseWithOneHit();
+        when(elasticsearchClient.search(any(SearchRequest.class), eq(Object.class))).thenReturn(responseWithHits);
+        BulkResponse bulkResponse = mock(BulkResponse.class);
+        when(bulkResponse.errors()).thenReturn(true);
+        when(elasticsearchClient.bulk(any(BulkRequest.class))).thenReturn(bulkResponse);
+
+        assertDoesNotThrow(() -> esUtilService.deleteDocumentsByCriteria("index1", Query.of(q -> q.matchAll(m -> m))));
+    }
+
+    @Test
     void deleteDocumentsByCriteria_exceptionThrown_doesNotPropagate() throws Exception {
         when(elasticsearchClient.search(any(SearchRequest.class), eq(Object.class))).thenThrow(new RuntimeException("search failed"));
 
         assertDoesNotThrow(() -> esUtilService.deleteDocumentsByCriteria("index1", Query.of(q -> q.matchAll(m -> m))));
+    }
+
+    @Test
+    void searchDocuments_withHits_extractsPaginatedResult() throws Exception {
+        SearchCriteria criteria = new SearchCriteria();
+        criteria.setPageNumber(0);
+        criteria.setPageSize(10);
+
+        SearchResponse<Object> response = buildSearchResponseWithOneHit();
+        when(elasticsearchClient.search(any(SearchRequest.class), eq(Object.class))).thenReturn(response);
+
+        SearchResult result = esUtilService.searchDocuments("index1", criteria);
+
+        assertNotNull(result);
+        assertEquals(1L, result.getTotalCount());
+    }
+
+    @Test
+    void searchDocuments_nullSearchCriteria_throwsAssertionError() {
+        assertThrows(AssertionError.class, () -> esUtilService.searchDocuments("index1", null));
+    }
+
+    @Test
+    void searchDocuments_unsupportedRangeOperator_throwsIllegalArgumentException() {
+        SearchCriteria criteria = new SearchCriteria();
+        Map<String, Object> rangeConditions = new HashMap<>();
+        rangeConditions.put("unknown_op", 5);
+        Map<String, Object> rangeValue = new HashMap<>();
+        rangeValue.put("score", rangeConditions);
+        Map<String, Object> rangeQuery = new HashMap<>();
+        rangeQuery.put("range", rangeValue);
+        criteria.setQuery(rangeQuery);
+        criteria.setPageNumber(0);
+        criteria.setPageSize(10);
+
+        assertThrows(IllegalArgumentException.class, () -> esUtilService.searchDocuments("index1", criteria));
+    }
+
+    @Test
+    void updateDocument_esClientThrowsIOException_returnsNull() throws Exception {
+        Map<String, Object> document = new HashMap<>();
+        document.put("externalId", "ext1");
+        when(elasticsearchClient.index(any(IndexRequest.class))).thenThrow(new java.io.IOException("es down"));
+
+        String result = esUtilService.updateDocument("index1", "doc1", document,
+                "/EsFieldsMapping/esRequiredFieldsJsonFilePath.json");
+
+        assertNull(result);
     }
 
     @Test

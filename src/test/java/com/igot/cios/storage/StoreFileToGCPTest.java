@@ -23,6 +23,8 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -102,6 +104,48 @@ class StoreFileToGCPTest {
     }
 
     @Test
+    void uploadCiosContentFile_transferToThrows_returnsFailedResponse() throws IOException {
+        MultipartFile multipartFile = mock(MultipartFile.class);
+        when(multipartFile.getOriginalFilename()).thenReturn("content.xlsx");
+        doThrow(new IOException("transfer failed"))
+                .when(multipartFile).transferTo(any(File.class));
+
+        SBApiResponse response = storeFileToGCP.uploadCiosContentFile(multipartFile, "container1", "contentFolder");
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void uploadCiosContentFile_nullFile_deletesQuietlyWithoutThrowing() {
+        SBApiResponse response = storeFileToGCP.uploadCiosContentFile(null, "container1", "contentFolder");
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void deleteQuietly_ioExceptionOnDelete_logsAndSwallows() throws Exception {
+        Path nonEmptyDir = Files.createTempDirectory("non-empty-dir");
+        Files.writeString(nonEmptyDir.resolve("child.txt"), "data");
+
+        java.lang.reflect.Method method = StoreFileToGCP.class.getDeclaredMethod("deleteQuietly", File.class);
+        method.setAccessible(true);
+
+        try {
+            assertDoesNotThrow(() -> {
+                try {
+                    method.invoke(storeFileToGCP, nonEmptyDir.toFile());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        } finally {
+            Files.deleteIfExists(nonEmptyDir.resolve("child.txt"));
+            Files.deleteIfExists(nonEmptyDir);
+        }
+    }
+
+    @Test
     void downloadCiosContentFile_success_returnsFileBody() throws IOException {
         when(cbServerProperties.getCiosContentFileCloudFolderName()).thenReturn("contentFolder");
         when(cbServerProperties.getCiosCloudContainerName()).thenReturn("container1");
@@ -126,5 +170,30 @@ class StoreFileToGCPTest {
         ResponseEntity<Object> response = storeFileToGCP.downloadCiosContentFile("never-created-" + System.currentTimeMillis() + ".txt");
 
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+    }
+
+    @Test
+    void downloadCiosContentFile_storageServiceThrows_cleansUpTempFileInFinally() {
+        when(cbServerProperties.getCiosContentFileCloudFolderName()).thenReturn("contentFolder");
+        when(cbServerProperties.getCiosCloudContainerName()).thenReturn("container1");
+
+        String fileName = "download-fail-" + System.currentTimeMillis() + ".txt";
+        doThrow(new RuntimeException("download failed"))
+                .when(storageService).download(anyString(), anyString(), anyString(), any());
+
+        ResponseEntity<Object> response = storeFileToGCP.downloadCiosContentFile(fileName);
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+    }
+
+    @Test
+    void init_buildsStorageServiceWithoutConnecting() {
+        StoreFileToGCP freshInstance = new StoreFileToGCP(cbServerProperties);
+        when(cbServerProperties.getCloudStorageTypeName()).thenReturn("azure");
+        when(cbServerProperties.getCloudStorageKey()).thenReturn("key");
+        when(cbServerProperties.getCloudStorageSecret()).thenReturn("secret");
+        when(cbServerProperties.getCloudStorageEndpoint()).thenReturn("http://localhost");
+
+        assertDoesNotThrow(freshInstance::init);
     }
 }

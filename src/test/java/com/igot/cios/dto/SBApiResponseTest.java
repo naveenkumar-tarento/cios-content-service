@@ -52,4 +52,20 @@ class SBApiResponseTest {
         assertEquals(params, response.getParams());
         assertEquals(HttpStatus.CREATED, response.getResponseCode());
     }
+
+    @Test
+    void allArgsConstructor_setsAllFields() {
+        ApiRespParam params = new ApiRespParam("msg1");
+        Map<String, Object> result = new HashMap<>();
+        result.put("key", "value");
+
+        SBApiResponse response = new SBApiResponse("id2", "v1", "ts2", params, HttpStatus.ACCEPTED, result);
+
+        assertEquals("id2", response.getId());
+        assertEquals("v1", response.getVer());
+        assertEquals("ts2", response.getTs());
+        assertEquals(params, response.getParams());
+        assertEquals(HttpStatus.ACCEPTED, response.getResponseCode());
+        assertEquals(result, response.getResult());
+    }
 }

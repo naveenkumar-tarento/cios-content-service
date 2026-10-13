@@ -79,4 +79,22 @@ class SSOControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON));
     }
+
+    @Test
+    void testSamlConfiguration_success() throws Exception {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("ssoId", "kc-id");
+        payload.put("courseDeeplink", "https://example.com/course/1");
+
+        SBApiResponse response = SBApiResponse.createDefaultResponse("testSaml");
+        response.setResponseCode(HttpStatus.OK);
+
+        Mockito.when(ssoService.testSamlConfiguration(any()))
+                .thenReturn(response);
+
+        mockMvc.perform(post("/sso/validateSaml")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isOk());
+    }
 }

@@ -229,6 +229,23 @@ class CornellSchedulerServiceTest {
     }
 
     @Test
+    void testPerformEnrollmentCall_missingResponseBody_logsAndReturnsNull() throws Exception {
+        when(cbServerProperties.getServiceLocatorHost()).thenReturn("http://localhost");
+        when(cbServerProperties.getServiceLocatorFixedUrl()).thenReturn("/api/v1/service");
+        when(restTemplate.exchange(anyString(), any(HttpMethod.class), any(HttpEntity.class), eq(Object.class)))
+                .thenReturn(ResponseEntity.ok(new Object()));
+        when(objectMapper.valueToTree(any())).thenReturn(realObjectMapper.missingNode());
+
+        Method method = CornellSchedulerService.class.getDeclaredMethod(
+                "performEnrollmentCall", String.class, String.class);
+        method.setAccessible(true);
+
+        Object result = method.invoke(cornellSchedulerService, "cornell", "{}");
+
+        assertNull(result);
+    }
+
+    @Test
     void testCallEnrollmentAPI_successfulFlow() throws Exception {
         String partnerCode = "cornell";
         String partnerId = "partner-id-123";
