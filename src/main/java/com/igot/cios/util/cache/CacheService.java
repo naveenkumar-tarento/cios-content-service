@@ -1,8 +1,8 @@
 package com.igot.cios.util.cache;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -12,12 +12,11 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class CacheService {
 
-  @Autowired
-  private RedisTemplate<String, String> redisTemplate;
-  @Autowired
-  private ObjectMapper objectMapper;
+  private final RedisTemplate<String, String> redisTemplate;
+  private final ObjectMapper objectMapper;
 
   @Value("${spring.redis.cacheTtl}")
   private long cacheTtl;
@@ -47,7 +46,7 @@ public class CacheService {
     } else {
       log.warn("Field {} not found in key {}.", key);
     }
-    return null;
+    return null; //NOSONAR - intentionally preserving original return behavior, no current callers depend on the actual delete result
   }
 
 }

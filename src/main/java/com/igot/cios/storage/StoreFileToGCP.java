@@ -3,10 +3,10 @@ package com.igot.cios.storage;
 import com.igot.cios.dto.SBApiResponse;
 import com.igot.cios.util.CbServerProperties;
 import com.igot.cios.util.Constants;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -32,13 +32,15 @@ import java.util.Map;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class StoreFileToGCP {
+
+    private static final String FAILED_TO_UPLOAD_MSG = "Failed to upload file. Exception: ";
 
     private Logger logger = LoggerFactory.getLogger(getClass().getName());
 
     private BaseStorageService storageService = null;
-    @Autowired
-    private CbServerProperties cbServerProperties;
+    private final CbServerProperties cbServerProperties;
 
     @PostConstruct
     public void init() {
@@ -55,7 +57,9 @@ public class StoreFileToGCP {
             String uniqueFileName = System.currentTimeMillis() + "_" + file.getName();
             tempFile = new File(System.getProperty("java.io.tmpdir"), uniqueFileName);
 
-            tempFile.createNewFile();
+            if (!tempFile.createNewFile()) {
+                log.warn("Temporary file already existed, overwriting: {}", tempFile.getAbsolutePath());
+            }
             try (FileInputStream fis = new FileInputStream(file); FileOutputStream fos = new FileOutputStream(tempFile)) {
                 byte[] buffer = new byte[1024];
                 int bytesRead;
@@ -65,15 +69,13 @@ public class StoreFileToGCP {
             }
             return uploadFile(tempFile, cloudFolderName, containerName);
         } catch (Exception e) {
-            log.error("Failed to upload file. Exception: ", e);
+            log.error(FAILED_TO_UPLOAD_MSG, e);
             response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErrmsg("Failed to upload file. Exception: " + e.getMessage());
+            response.getParams().setErrmsg(FAILED_TO_UPLOAD_MSG + e.getMessage());
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
             return response;
         } finally {
-            if (file != null) {
-                file.delete();
-            }
+            deleteQuietly(file);
         }
     }
 
@@ -89,15 +91,13 @@ public class StoreFileToGCP {
             response.getResult().putAll(uploadedFile);
             return response;
         } catch (Exception e) {
-            log.error("Failed to upload file. Exception: ", e);
+            log.error(FAILED_TO_UPLOAD_MSG, e);
             response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErrmsg("Failed to upload file. Exception: " + e.getMessage());
+            response.getParams().setErrmsg(FAILED_TO_UPLOAD_MSG + e.getMessage());
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
             return response;
         } finally {
-            if (file != null) {
-                file.delete();
-            }
+            deleteQuietly(file);
         }
     }
 
@@ -112,22 +112,30 @@ public class StoreFileToGCP {
             file.transferTo(tempFile);
             return uploadFile(tempFile, cloudFolderName, containerName);
         } catch (Exception e) {
-            log.error("Failed to upload file. Exception: ", e);
+            log.error(FAILED_TO_UPLOAD_MSG, e);
             response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErrmsg("Failed to upload file. Exception: " + e.getMessage());
+            response.getParams().setErrmsg(FAILED_TO_UPLOAD_MSG + e.getMessage());
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
             return response;
         } finally {
-            if (tempFile != null && tempFile.exists()) {
-                boolean deleted = tempFile.delete();
-                if (!deleted) {
-                    log.warn("Failed to delete temporary file: {}", tempFile.getAbsolutePath());
-                }
-            }
+            deleteQuietly(tempFile);
         }
     }
 
-    public ResponseEntity<?> downloadCiosContentFile(String fileName) {
+    private void deleteQuietly(File file) {
+        if (file == null) {
+            return;
+        }
+        try {
+            if (!Files.deleteIfExists(file.toPath())) {
+                log.warn("File did not exist to delete: {}", file.getAbsolutePath());
+            }
+        } catch (IOException e) {
+            log.warn("Failed to delete file: {}", file.getAbsolutePath(), e);
+        }
+    }
+
+    public ResponseEntity<Object> downloadCiosContentFile(String fileName) {
         Path tmpPath = Paths.get(Constants.LOCAL_BASE_PATH + fileName);
         try {
             String objectKey = cbServerProperties.getCiosContentFileCloudFolderName() + "/" + fileName;
