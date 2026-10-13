@@ -80,19 +80,19 @@ public class CiosContentController {
     }
 
     @GetMapping("/v1/read/content/{partnercode}/{externalid}")
-    public ResponseEntity<?> readContentByExternalId(@PathVariable String partnercode, @PathVariable String externalid) {
+    public ResponseEntity<Object> readContentByExternalId(@PathVariable String partnercode, @PathVariable String externalid) {
         Object response = ciosContentService.readContentByExternalId(partnercode, externalid);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/v1/search/content")
-    public ResponseEntity<?> searchContent(@RequestBody SearchCriteria searchCriteria) {
+    public ResponseEntity<Object> searchContent(@RequestBody SearchCriteria searchCriteria) {
         SearchResult searchResult = ciosContentService.searchContent(searchCriteria);
         return new ResponseEntity<>(searchResult, HttpStatus.OK);
     }
 
     @PostMapping("/v1/update/content")
-    public ResponseEntity<?> updateContent(@RequestBody JsonNode jsonNode) {
+    public ResponseEntity<Object> updateContent(@RequestBody JsonNode jsonNode) {
         Object searchResult = ciosContentService.updateContent(jsonNode);
         return new ResponseEntity<>(searchResult, HttpStatus.OK);
     }
