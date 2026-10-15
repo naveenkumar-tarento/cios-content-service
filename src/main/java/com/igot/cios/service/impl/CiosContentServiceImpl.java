@@ -237,7 +237,7 @@ public class CiosContentServiceImpl implements CiosContentService {
             return Constants.EXTERNAL_ID_PREFIX + id + " does not exist.";
         }
         CornellContentEntity entity = entityOpt.get();
-        if (Boolean.TRUE.equals(entity.getIsActive())) {
+        if (entity.getIsActive()) {
             return Constants.EXTERNAL_ID_PREFIX + id + " is live, cannot delete.";
         }
         return deleteIfEligible(entity, id, partnerCode);

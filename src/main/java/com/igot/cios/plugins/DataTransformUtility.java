@@ -107,7 +107,7 @@ public class DataTransformUtility {
             String excelHeader = formatter.formatCellValue(headerCell).replaceAll("[\\n*]", "").trim();
             Cell valueCell = dataRow.getCell(colIndex);
             String cellValue = formatCellValue(valueCell, formatter);
-            if (!cellValue.isEmpty()) {
+            if (valueCell != null && valueCell.getCellType() != CellType.BLANK) {
                 allBlank = false;
             }
             rowData.put(excelHeader, cellValue);
